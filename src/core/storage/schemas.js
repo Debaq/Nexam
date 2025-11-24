@@ -47,6 +47,7 @@
  * @property {boolean} randomization.shuffleAlternatives - Mezclar alternativas
  * @property {string[]} students - IDs de estudiantes asignados
  * @property {Object} codes - Mapa studentId -> código único
+ * @property {string} folder - Carpeta/categoría del examen
  * @property {Date} createdAt - Fecha de creación
  * @property {Date} updatedAt - Fecha de actualización
  */
@@ -103,7 +104,8 @@ export const defaults = {
     },
     questions: [],
     students: [],
-    codes: {}
+    codes: {},
+    folder: 'Sin carpeta'
   },
 
   student: {

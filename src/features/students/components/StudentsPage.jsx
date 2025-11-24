@@ -24,17 +24,9 @@ export const StudentsPage = () => {
     }
   };
 
-  const handleCreateSample = async () => {
-    try {
-      await studentsService.create({
-        rut: '12345678-5',
-        name: 'Juan',
-        lastName: 'Pérez',
-        email: 'juan.perez@example.com'
-      });
-    } catch (error) {
-      alert(error.message);
-    }
+  const handleCreateNew = () => {
+    // TODO: Abrir modal para crear estudiante
+    alert('Modal de crear estudiante próximamente');
   };
 
   if (!students) {
@@ -55,7 +47,7 @@ export const StudentsPage = () => {
             {students.length} {students.length === 1 ? 'estudiante' : 'estudiantes'} registrados
           </p>
         </div>
-        <Button onClick={handleCreateSample}>
+        <Button onClick={handleCreateNew}>
           <Plus className="w-4 h-4 mr-2" />
           Nuevo Estudiante
         </Button>
@@ -88,7 +80,7 @@ export const StudentsPage = () => {
               }
             </p>
             {!searchTerm && (
-              <Button onClick={handleCreateSample}>
+              <Button onClick={handleCreateNew}>
                 <Plus className="w-4 h-4 mr-2" />
                 Agregar Primer Estudiante
               </Button>

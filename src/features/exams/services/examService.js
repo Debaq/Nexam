@@ -1,6 +1,7 @@
 import { db } from '@/core/storage/db';
 import { defaults } from '@/core/storage/schemas';
 import { v4 as uuidv4 } from 'uuid';
+import { giftParser } from '@/core/export/giftParser';
 
 /**
  * Generar código único de 4 letras
@@ -290,6 +291,98 @@ export const examService = {
     return {
       valid: errors.length === 0,
       errors
+    };
+  },
+
+  /**
+   * Duplicar un examen (sin estudiantes)
+   * @param {string} examId - ID del examen a duplicar
+   * @returns {Promise<Object>} Examen duplicado
+   */
+  async duplicate(examId) {
+    const originalExam = await db.exams.get(examId);
+    if (!originalExam) throw new Error('Examen no encontrado');
+
+    const now = new Date();
+    const duplicatedExam = {
+      ...originalExam,
+      id: uuidv4(),
+      title: `${originalExam.title} (Copia)`,
+      students: [], // Sin estudiantes
+      codes: {}, // Sin códigos
+      createdAt: now,
+      updatedAt: now
+    };
+
+    await db.exams.add(duplicatedExam);
+    return duplicatedExam;
+  },
+
+  /**
+   * Obtener carpetas únicas
+   * @returns {Promise<Array>} Array de nombres de carpetas
+   */
+  async getFolders() {
+    const exams = await db.exams.toArray();
+    const folders = [...new Set(exams.map(e => e.folder || 'Sin carpeta'))];
+    return folders.sort();
+  },
+
+  /**
+   * Obtener exámenes por carpeta
+   * @param {string} folder - Nombre de la carpeta
+   * @returns {Promise<Array>} Array de exámenes
+   */
+  async getByFolder(folder) {
+    return await db.exams.where('folder').equals(folder).toArray();
+  },
+
+  /**
+   * Mover examen a carpeta
+   * @param {string} examId - ID del examen
+   * @param {string} folder - Nombre de la carpeta
+   * @returns {Promise<Object>} Examen actualizado
+   */
+  async moveToFolder(examId, folder) {
+    await db.exams.update(examId, {
+      folder: folder || 'Sin carpeta',
+      updatedAt: new Date()
+    });
+    return await db.exams.get(examId);
+  },
+
+  /**
+   * Exportar examen a formato GIFT
+   * @param {string} examId - ID del examen
+   * @returns {Promise<Object>} { filename, content } para descarga
+   */
+  async exportToGift(examId) {
+    const exam = await db.exams.get(examId);
+    if (!exam) throw new Error('Examen no encontrado');
+
+    // Obtener todas las preguntas del examen
+    const questions = await Promise.all(
+      exam.questions.map(qId => db.questions.get(qId))
+    );
+
+    const validQuestions = questions.filter(Boolean);
+
+    if (validQuestions.length === 0) {
+      throw new Error('El examen no tiene preguntas para exportar');
+    }
+
+    // Generar contenido GIFT
+    const giftContent = giftParser.export(validQuestions);
+
+    // Generar nombre de archivo seguro
+    const safeTitle = exam.title.replace(/[^a-zA-Z0-9]/g, '_');
+    const timestamp = new Date().toISOString().split('T')[0];
+    const filename = `${safeTitle}_${timestamp}.gift`;
+
+    return {
+      filename,
+      content: giftContent,
+      questionCount: validQuestions.length
     };
   }
 };

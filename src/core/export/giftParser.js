@@ -13,20 +13,57 @@ export const giftParser = {
   parse(giftText) {
     const questions = [];
 
-    // Separar por bloques (doble salto de línea)
-    const blocks = giftText
-      .split(/\n\s*\n/)
-      .map(b => b.trim())
-      .filter(Boolean);
+    // Limpiar el texto: remover líneas de comentarios al inicio
+    const lines = giftText.split('\n');
+    const contentLines = [];
+    let inQuestion = false;
 
-    for (const block of blocks) {
+    for (const line of lines) {
+      const trimmed = line.trim();
+
+      // Si encontramos una pregunta (:: o una pregunta directa con {)
+      if (trimmed.startsWith('::') || (trimmed && !trimmed.startsWith('//'))) {
+        inQuestion = true;
+      }
+
+      // Solo agregar líneas si estamos en una pregunta
+      if (inQuestion) {
+        contentLines.push(line);
+      }
+    }
+
+    const cleanedText = contentLines.join('\n');
+
+    // Separar por preguntas (buscar patrones ::título::)
+    const questionBlocks = [];
+    let currentBlock = '';
+
+    for (const line of cleanedText.split('\n')) {
+      const trimmed = line.trim();
+
+      // Si encontramos un nuevo título de pregunta, guardar el bloque anterior
+      if (trimmed.startsWith('::') && currentBlock.trim()) {
+        questionBlocks.push(currentBlock.trim());
+        currentBlock = line + '\n';
+      } else {
+        currentBlock += line + '\n';
+      }
+    }
+
+    // Agregar el último bloque
+    if (currentBlock.trim()) {
+      questionBlocks.push(currentBlock.trim());
+    }
+
+    // Parsear cada bloque
+    for (const block of questionBlocks) {
       try {
         const question = this.parseBlock(block);
         if (question) {
           questions.push(question);
         }
       } catch (error) {
-        console.warn('Error parseando bloque GIFT:', error.message);
+        console.warn('Error parseando bloque GIFT:', error.message, block);
       }
     }
 
@@ -39,35 +76,42 @@ export const giftParser = {
    * @returns {Object|null} Pregunta parseada
    */
   parseBlock(block) {
-    const lines = block.split('\n').map(l => l.trim());
+    // Limpiar bloque
+    block = block.trim();
 
-    // Ignorar comentarios
-    if (lines[0].startsWith('//')) return null;
+    // Ignorar bloques vacíos o que solo tienen comentarios
+    if (!block || block.startsWith('//')) return null;
 
-    // Extraer título (opcional): ::título::
+    // Buscar el título entre :: ::
     let title = null;
-    let questionLine = 0;
-    const titleMatch = lines[0].match(/^::(.+?)::/);
+    const titleMatch = block.match(/^::(.+?)::/);
+    let textStart = 0;
+
     if (titleMatch) {
       title = titleMatch[1];
-      questionLine = 1;
+      textStart = titleMatch[0].length;
     }
 
-    // Unir todas las líneas de la pregunta
-    const fullText = lines.slice(questionLine).join(' ');
+    // Obtener el resto del texto después del título
+    const remainingText = block.substring(textStart).trim();
 
-    // Extraer texto de la pregunta (antes de las llaves)
-    const questionMatch = fullText.match(/^(.+?)\{/);
+    // Buscar la pregunta y las alternativas
+    // Las alternativas están dentro de llaves { }
+    const questionMatch = remainingText.match(/^(.+?)\{/s);
     if (!questionMatch) return null;
 
     const questionText = questionMatch[1].trim();
 
-    // Extraer alternativas (dentro de las llaves)
-    const alternativesMatch = fullText.match(/\{([^}]+)\}/);
-    if (!alternativesMatch) return null;
+    // Extraer todo el contenido entre llaves (puede tener múltiples líneas)
+    const braceStart = remainingText.indexOf('{');
+    const braceEnd = remainingText.lastIndexOf('}');
 
-    const alternativesText = alternativesMatch[1];
+    if (braceStart === -1 || braceEnd === -1) return null;
+
+    const alternativesText = remainingText.substring(braceStart + 1, braceEnd);
     const alternatives = this.parseAlternatives(alternativesText);
+
+    if (alternatives.length === 0) return null;
 
     // Determinar tipo de pregunta
     const type = this.detectQuestionType(alternatives);
@@ -85,6 +129,10 @@ export const giftParser = {
       feedback: {
         general: '',
         byAlternative: {}
+      },
+      statistics: {
+        timesUsed: 0,
+        averageScore: 0
       }
     };
   },
@@ -97,29 +145,63 @@ export const giftParser = {
   parseAlternatives(alternativesText) {
     const alternatives = [];
 
-    // Dividir por = o ~ (correcta o incorrecta)
-    const parts = alternativesText.split(/(?=[=~])/);
+    // Dividir por líneas y buscar las que empiezan con = o ~
+    const lines = alternativesText.split('\n');
+    let currentAlt = null;
 
-    for (const part of parts) {
-      if (!part.trim()) continue;
+    for (const line of lines) {
+      const trimmed = line.trim();
 
-      const isCorrect = part.startsWith('=');
-      let text = part.substring(1).trim();
+      // Verificar si es una nueva alternativa (empieza con = o ~)
+      if (trimmed.startsWith('=') || trimmed.startsWith('~')) {
+        // Guardar la alternativa anterior si existe
+        if (currentAlt) {
+          alternatives.push(currentAlt);
+        }
 
-      // Extraer feedback si existe (# feedback)
-      let feedback = '';
-      const feedbackMatch = text.match(/^(.+?)#(.+)$/);
-      if (feedbackMatch) {
-        text = feedbackMatch[1].trim();
-        feedback = feedbackMatch[2].trim();
+        const isCorrect = trimmed.startsWith('=');
+        let text = trimmed.substring(1).trim();
+
+        // Extraer feedback si existe (# feedback)
+        let feedback = '';
+        const feedbackIndex = text.indexOf('#');
+        if (feedbackIndex !== -1) {
+          feedback = text.substring(feedbackIndex + 1).trim();
+          text = text.substring(0, feedbackIndex).trim();
+        }
+
+        currentAlt = {
+          id: uuidv4(),
+          text,
+          isCorrect,
+          feedback: feedback || undefined
+        };
+      } else if (currentAlt && trimmed) {
+        // Continuar la alternativa anterior (línea de continuación)
+        const feedbackIndex = trimmed.indexOf('#');
+        if (feedbackIndex !== -1) {
+          // Si encontramos feedback en esta línea
+          const beforeFeedback = trimmed.substring(0, feedbackIndex).trim();
+          const feedbackPart = trimmed.substring(feedbackIndex + 1).trim();
+
+          if (beforeFeedback) {
+            currentAlt.text += ' ' + beforeFeedback;
+          }
+          currentAlt.feedback = (currentAlt.feedback ? currentAlt.feedback + ' ' : '') + feedbackPart;
+        } else {
+          // Si no hay feedback, agregar al texto
+          if (currentAlt.feedback === undefined) {
+            currentAlt.text += ' ' + trimmed;
+          } else {
+            currentAlt.feedback += ' ' + trimmed;
+          }
+        }
       }
+    }
 
-      alternatives.push({
-        id: uuidv4(),
-        text,
-        isCorrect,
-        feedback: feedback || undefined
-      });
+    // Guardar la última alternativa
+    if (currentAlt) {
+      alternatives.push(currentAlt);
     }
 
     return alternatives;

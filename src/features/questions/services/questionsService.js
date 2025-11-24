@@ -1,6 +1,7 @@
 import { db } from '@/core/storage/db';
 import { defaults } from '@/core/storage/schemas';
 import { v4 as uuidv4 } from 'uuid';
+import { giftParser } from '@/core/export/giftParser';
 
 /**
  * Servicio para gestión de preguntas
@@ -240,6 +241,63 @@ export const questionsService = {
     return {
       valid: errors.length === 0,
       errors
+    };
+  },
+
+  /**
+   * EXPORT - Exportar categoría completa a formato GIFT
+   * @param {string} category - Nombre de la categoría
+   * @returns {Promise<Object>} { filename, content, questionCount }
+   */
+  async exportCategoryToGift(category) {
+    const questions = await this.getByCategory(category);
+
+    if (questions.length === 0) {
+      throw new Error(`No hay preguntas en la categoría "${category}"`);
+    }
+
+    // Generar contenido GIFT
+    const giftContent = giftParser.export(questions);
+
+    // Generar nombre de archivo seguro
+    const safeCategory = category.replace(/[^a-zA-Z0-9]/g, '_');
+    const timestamp = new Date().toISOString().split('T')[0];
+    const filename = `${safeCategory}_${timestamp}.gift`;
+
+    return {
+      filename,
+      content: giftContent,
+      questionCount: questions.length
+    };
+  },
+
+  /**
+   * EXPORT - Exportar preguntas seleccionadas a formato GIFT
+   * @param {string[]} questionIds - Array de IDs de preguntas
+   * @returns {Promise<Object>} { filename, content, questionCount }
+   */
+  async exportQuestionsToGift(questionIds) {
+    const questions = await Promise.all(
+      questionIds.map(id => this.getById(id))
+    );
+
+    const validQuestions = questions.filter(Boolean);
+
+    if (validQuestions.length === 0) {
+      throw new Error('No hay preguntas válidas para exportar');
+    }
+
+    // Generar contenido GIFT
+    const giftContent = giftParser.export(validQuestions);
+
+    // Generar nombre de archivo
+    const timestamp = new Date().toISOString().split('T')[0];
+    const filename = `preguntas_${timestamp}.gift`;
+
+    return {
+      filename,
+      content: giftContent,
+      questionCount: validQuestions.length
     };
   }
 };
