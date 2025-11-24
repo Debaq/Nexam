@@ -1,20 +1,42 @@
-import React from 'react'
-import { QuestionsList } from './features/questions/components/QuestionsList'
+import React, { useState } from 'react'
+import { MainLayout } from './shared/components/Layout/MainLayout'
+import { ExamsPage } from './features/exams/components/ExamsPage'
+import { QuestionsPage } from './features/questions/components/QuestionsPage'
+import { StudentsPage } from './features/students/components/StudentsPage'
+import { CorrectionPage } from './features/correction/components/CorrectionPage'
+import { ReportsPage } from './features/analytics/components/ReportsPage'
 
 function App() {
-  return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="container mx-auto px-4 py-4">
-          <h1 className="text-2xl font-bold text-primary">Nexam</h1>
-          <p className="text-sm text-muted-foreground">Sistema Inteligente de Evaluación Educativa</p>
-        </div>
-      </header>
+  const [currentPage, setCurrentPage] = useState('exams')
 
-      <main className="container mx-auto px-4 py-8">
-        <QuestionsList />
-      </main>
-    </div>
+  const renderPage = () => {
+    switch (currentPage) {
+      case 'exams':
+        return <ExamsPage />
+      case 'questions':
+        return <QuestionsPage />
+      case 'students':
+        return <StudentsPage />
+      case 'correction':
+        return <CorrectionPage />
+      case 'reports':
+        return <ReportsPage />
+      case 'settings':
+        return (
+          <div className="p-8">
+            <h1 className="text-3xl font-bold mb-4">Configuración</h1>
+            <p className="text-muted-foreground">Próximamente...</p>
+          </div>
+        )
+      default:
+        return <ExamsPage />
+    }
+  }
+
+  return (
+    <MainLayout currentPath={currentPage} onNavigate={setCurrentPage}>
+      {renderPage()}
+    </MainLayout>
   )
 }
 
