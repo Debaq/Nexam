@@ -1,0 +1,121 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+.yarn/
+dist/
+dist-ssr/
+*.local
+
+# Lock files (opcional - descomentar si no quieres versionar)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*~
+
+# Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.production
+
+# Build
+build/
+.cache/
+.parcel-cache/
+.next/
+out/
+
+# Testing
+coverage/
+.nyc_output/
+*.lcov
+
+# PWA
+sw.js
+workbox-*.js
+dev-dist/
+
+# Training - Dataset e imágenes (pueden ser muy pesadas)
+training/runs/*
+training/dataset/images/*
+training/dataset/labels/*
+!training/dataset/images/.gitkeep
+!training/dataset/labels/.gitkeep
+!training/dataset/images/train/.gitkeep
+!training/dataset/images/val/.gitkeep
+!training/dataset/images/test/.gitkeep
+!training/dataset/labels/train/.gitkeep
+!training/dataset/labels/val/.gitkeep
+!training/dataset/labels/test/.gitkeep
+
+# Python - Training scripts
+training/**/__pycache__/
+training/**/*.py[cod]
+training/**/*$py.class
+training/**/*.so
+training/**/.Python
+training/**/venv/
+training/**/env/
+training/**/ENV/
+training/**/.venv
+*.egg-info/
+.pytest_cache/
+
+# Modelos ONNX (pueden ser pesados, versionar solo el final)
+public/models/*
+!public/models/.gitkeep
+!public/models/yolov11n-marks.onnx
+
+# Datos temporales y caché
+.temp/
+tmp/
+*.tmp
+*.bak
+*.swp
+
+# Sistema operativo
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Archivos de respaldo y datos sensibles
+*.backup
+*.old
+*.orig
+backup/
+backups/
+
+# Datos de prueba grandes
+test-data/
+test-images/
+*.zip
+*.tar.gz
+*.rar
+
+# IndexedDB exports (pueden ser pesados)
+exports/
+data-exports/

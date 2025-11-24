@@ -1,0 +1,84 @@
+{
+  "app": {
+    "name": "Nexam",
+    "description": "Sistema Inteligente de Evaluación Educativa"
+  },
+  "navigation": {
+    "questions": "Preguntas",
+    "exams": "Evaluaciones",
+    "students": "Estudiantes",
+    "correction": "Corrección",
+    "analytics": "Análisis"
+  },
+  "questions": {
+    "title": "Banco de Preguntas",
+    "create": "Nueva Pregunta",
+    "edit": "Editar Pregunta",
+    "delete": "Eliminar Pregunta",
+    "import": "Importar",
+    "export": "Exportar",
+    "types": {
+      "multiple": "Selección Múltiple",
+      "boolean": "Verdadero/Falso",
+      "development": "Desarrollo"
+    },
+    "difficulty": {
+      "easy": "Fácil",
+      "medium": "Media",
+      "hard": "Difícil"
+    }
+  },
+  "exams": {
+    "title": "Evaluaciones",
+    "create": "Nueva Evaluación",
+    "generate": "Generar PDFs",
+    "types": {
+      "uniform": "Uniforme",
+      "differentiated": "Diferenciada"
+    }
+  },
+  "students": {
+    "title": "Estudiantes",
+    "create": "Nuevo Estudiante",
+    "import": "Importar Nómina",
+    "rut": "RUT",
+    "name": "Nombre",
+    "lastName": "Apellido",
+    "email": "Email"
+  },
+  "correction": {
+    "title": "Corrección Automática",
+    "upload": "Subir Imagen",
+    "process": "Procesar",
+    "results": "Resultados"
+  },
+  "actions": {
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "create": "Crear",
+    "import": "Importar",
+    "export": "Exportar",
+    "upload": "Subir",
+    "download": "Descargar"
+  },
+  "messages": {
+    "success": {
+      "created": "Creado exitosamente",
+      "updated": "Actualizado exitosamente",
+      "deleted": "Eliminado exitosamente",
+      "imported": "Importado exitosamente",
+      "exported": "Exportado exitosamente"
+    },
+    "errors": {
+      "generic": "Ha ocurrido un error",
+      "notFound": "No encontrado",
+      "validation": "Error de validación",
+      "required": "Este campo es requerido"
+    },
+    "confirm": {
+      "delete": "¿Está seguro que desea eliminar?"
+    }
+  }
+}
