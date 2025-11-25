@@ -55,7 +55,7 @@ export const questionsService = {
 
   /**
    * READ - Obtener preguntas por tipo
-   * @param {string} type - Tipo de pregunta ('multiple'|'boolean'|'development')
+   * @param {string} type - Tipo de pregunta ('multiple'|'boolean'|'development'|'matching')
    * @returns {Promise<Array>} Array de preguntas
    */
   async getByType(type) {
@@ -196,7 +196,8 @@ export const questionsService = {
       byType: {
         multiple: questions.filter(q => q.type === 'multiple').length,
         boolean: questions.filter(q => q.type === 'boolean').length,
-        development: questions.filter(q => q.type === 'development').length
+        development: questions.filter(q => q.type === 'development').length,
+        matching: questions.filter(q => q.type === 'matching').length
       },
       byDifficulty: {
         easy: questions.filter(q => q.difficulty.manual === 'easy').length,
@@ -223,7 +224,7 @@ export const questionsService = {
       errors.push('El texto de la pregunta es obligatorio');
     }
 
-    if (!['multiple', 'boolean', 'development'].includes(question.type)) {
+    if (!['multiple', 'boolean', 'development', 'matching'].includes(question.type)) {
       errors.push('Tipo de pregunta inválido');
     }
 
@@ -238,11 +239,25 @@ export const questionsService = {
       }
     }
 
+    if (question.type === 'matching') {
+      if (!question.items || question.items.length < 2) {
+        errors.push('Se requieren al menos 2 items');
+      }
+      if (!question.combinations || question.combinations.length < 2) {
+        errors.push('Se requieren al menos 2 combinaciones');
+      }
+      const correctCombinationCount = question.combinations?.filter(c => c.isCorrect).length || 0;
+      if (correctCombinationCount === 0) {
+        errors.push('Debe haber al menos una combinación correcta');
+      }
+    }
+
     return {
       valid: errors.length === 0,
       errors
     };
   },
+
 
   /**
    * EXPORT - Exportar categoría completa a formato GIFT

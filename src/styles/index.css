@@ -47,6 +47,110 @@
     --input: 217.2 32.6% 17.5%;
     --ring: 224.3 76.3% 48%;
   }
+
+  /* Tema violeta */
+  .violet {
+    --primary: 262 60% 50%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 262 60% 50%;
+  }
+
+  .dark.violet {
+    --primary: 262 70% 60%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 262 70% 60%;
+  }
+
+  /* Tema azul */
+  .blue {
+    --primary: 220 70% 46%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 220 70% 46%;
+  }
+
+  .dark.blue {
+    --primary: 220 80% 56%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 220 80% 56%;
+  }
+
+  /* Tema zinc */
+  .zinc {
+    --primary: 240 5% 26%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 240 5% 26%;
+  }
+
+  .dark.zinc {
+    --primary: 240 5% 35%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 240 5% 35%;
+  }
+
+  /* Tema neutral */
+  .neutral {
+    --primary: 0 0% 20%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 0 0% 20%;
+  }
+
+  .dark.neutral {
+    --primary: 0 0% 29%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 0 0% 29%;
+  }
+
+  /* Tema stone */
+  .stone {
+    --primary: 20 5% 30%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 20 5% 30%;
+  }
+
+  .dark.stone {
+    --primary: 20 5% 39%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 20 5% 39%;
+  }
+
+  /* Tema rojo */
+  .red {
+    --primary: 0 84% 60%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 0 84% 60%;
+  }
+
+  .dark.red {
+    --primary: 0 70% 50%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 0 70% 50%;
+  }
+
+  /* Tema verde */
+  .green {
+    --primary: 142 76% 36%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 142 76% 36%;
+  }
+
+  .dark.green {
+    --primary: 142 70% 45%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 142 70% 45%;
+  }
+
+  /* Tema naranja */
+  .orange {
+    --primary: 25 95% 53%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 25 95% 53%;
+  }
+
+  .dark.orange {
+    --primary: 25 90% 60%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 25 90% 60%;
+  }
 }
 
 @layer base {

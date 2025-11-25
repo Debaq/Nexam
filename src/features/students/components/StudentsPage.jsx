@@ -5,11 +5,19 @@ import { studentsService } from '../services/studentsService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
-import { Plus, Search, Trash2, Mail } from 'lucide-react';
+import { Plus, Search, Trash2, Mail, GraduationCap, ChevronRight, Upload } from 'lucide-react';
+import StudentSectionEnrollmentModal from './StudentSectionEnrollmentModal';
+import StudentCSVImportModal from './StudentCSVImportModal';
+import StudentCreateModal from './StudentCreateModal';
+import { studentSectionsService } from '../services/studentSectionsService';
 
-export const StudentsPage = () => {
+export const StudentsPage = ({ onStudentSelect }) => {
   const students = useLiveQuery(() => db.students.toArray(), []);
   const [searchTerm, setSearchTerm] = useState('');
+  const [enrollmentModalOpen, setEnrollmentModalOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState(null);
 
   const filteredStudents = students?.filter(s =>
     s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -24,21 +32,35 @@ export const StudentsPage = () => {
     }
   };
 
-  const handleCreateNew = () => {
-    // TODO: Abrir modal para crear estudiante
-    alert('Modal de crear estudiante próximamente');
+  const handleImportSuccess = () => {
+    // Actualizar la lista de estudiantes
+  };
+
+  const handleCreateSuccess = () => {
+    // Actualizar la lista de estudiantes
+  };
+
+  const handleEnrollStudent = (student) => {
+    setSelectedStudent(student);
+    setEnrollmentModalOpen(true);
+  };
+
+  const handleStudentClick = (student) => {
+    if (onStudentSelect) {
+      onStudentSelect(student.id);
+    }
   };
 
   if (!students) {
     return (
-      <div className="p-8">
+      <div className="px-6 py-8">
         <p className="text-muted-foreground">Cargando estudiantes...</p>
       </div>
     );
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="px-6 py-8 max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
@@ -47,10 +69,20 @@ export const StudentsPage = () => {
             {students.length} {students.length === 1 ? 'estudiante' : 'estudiantes'} registrados
           </p>
         </div>
-        <Button onClick={handleCreateNew}>
-          <Plus className="w-4 h-4 mr-2" />
-          Nuevo Estudiante
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setImportModalOpen(true)}
+            className="flex items-center gap-2"
+          >
+            <Upload className="w-4 h-4" />
+            Importar CSV
+          </Button>
+          <Button onClick={() => setCreateModalOpen(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            Nuevo Estudiante
+          </Button>
+        </div>
       </div>
 
       {/* Search */}
@@ -80,7 +112,7 @@ export const StudentsPage = () => {
               }
             </p>
             {!searchTerm && (
-              <Button onClick={handleCreateNew}>
+              <Button onClick={() => setCreateModalOpen(true)}>
                 <Plus className="w-4 h-4 mr-2" />
                 Agregar Primer Estudiante
               </Button>
@@ -90,13 +122,20 @@ export const StudentsPage = () => {
       ) : (
         <div className="grid gap-3">
           {filteredStudents.map((student) => (
-            <Card key={student.id} className="hover:shadow-md transition-shadow">
+            <Card
+              key={student.id}
+              className="hover:shadow-md transition-shadow cursor-pointer"
+              onClick={() => handleStudentClick(student)}
+            >
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
-                    <CardTitle className="text-lg">
-                      {student.name} {student.lastName}
-                    </CardTitle>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-lg">
+                        {student.name} {student.lastName}
+                      </CardTitle>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                    </div>
                     <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
                       <span className="font-mono">{student.rut}</span>
                       {student.email && (
@@ -107,22 +146,61 @@ export const StudentsPage = () => {
                       )}
                     </div>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleDelete(student.id)}
-                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEnrollStudent(student);
+                      }}
+                      className="flex items-center gap-1"
+                    >
+                      <GraduationCap className="w-3 h-3" />
+                      Inscribir
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(student.id);
+                      }}
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
             </Card>
           ))}
         </div>
       )}
+
+      {/* Modal de inscripción */}
+      {selectedStudent && (
+        <StudentSectionEnrollmentModal
+          studentId={selectedStudent.id}
+          studentName={`${selectedStudent.name} ${selectedStudent.lastName}`}
+          open={enrollmentModalOpen}
+          onOpenChange={setEnrollmentModalOpen}
+        />
+      )}
+
+      {/* Modal de importación CSV */}
+      <StudentCSVImportModal
+        open={importModalOpen}
+        onOpenChange={setImportModalOpen}
+        onImportSuccess={handleImportSuccess}
+      />
+
+      {/* Modal de creación de estudiante */}
+      <StudentCreateModal
+        open={createModalOpen}
+        onOpenChange={setCreateModalOpen}
+        onSuccess={handleCreateSuccess}
+      />
     </div>
   );
 };
-
-export default StudentsPage;

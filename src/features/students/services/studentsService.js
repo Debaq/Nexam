@@ -1,5 +1,6 @@
 import { db } from '@/core/storage/db';
 import { v4 as uuidv4 } from 'uuid';
+import { studentSectionsService } from './studentSectionsService';
 
 /**
  * Validar y formatear RUT chileno
@@ -128,6 +129,83 @@ export const studentsService = {
   },
 
   /**
+   * READ - Obtener estudiantes con información de secciones
+   * @returns {Promise<Array>} Array de estudiantes con secciones
+   */
+  async getAllWithSections() {
+    const students = await db.students.toArray();
+
+    const studentsWithSections = await Promise.all(
+      students.map(async (student) => {
+        const sections = await studentSectionsService.getActiveByStudent(student.id);
+
+        // Obtener detalles completos de secciones
+        const sectionDetails = await Promise.all(
+          sections.map(async (section) => {
+            const sectionDetail = await db.sections.get(section.sectionId);
+            return {
+              ...section,
+              sectionDetail
+            };
+          })
+        );
+
+        return {
+          ...student,
+          sections: sectionDetails
+        };
+      })
+    );
+
+    return studentsWithSections;
+  },
+
+  /**
+   * READ - Obtener estudiante con información de secciones
+   * @param {string} id - ID del estudiante
+   * @returns {Promise<Object>} Estudiante con secciones
+   */
+  async getByIdWithSections(id) {
+    const student = await db.students.get(id);
+    if (!student) return null;
+
+    const sections = await studentSectionsService.getActiveByStudent(student.id);
+
+    // Obtener detalles completos de secciones
+    const sectionDetails = await Promise.all(
+      sections.map(async (section) => {
+        const sectionDetail = await db.sections.get(section.sectionId);
+        return {
+          ...section,
+          sectionDetail
+        };
+      })
+    );
+
+    return {
+      ...student,
+      sections: sectionDetails
+    };
+  },
+
+  /**
+   * READ - Obtener historial completo de un estudiante
+   * @param {string} id - ID del estudiante
+   * @returns {Promise<Object>} Estudiante con historial completo
+   */
+  async getStudentHistory(id) {
+    const student = await db.students.get(id);
+    if (!student) return null;
+
+    const history = await studentSectionsService.getStudentHistory(student.id);
+
+    return {
+      ...student,
+      history
+    };
+  },
+
+  /**
    * UPDATE - Actualizar un estudiante
    * @param {string} id - ID del estudiante
    * @param {Object} updates - Campos a actualizar
@@ -169,6 +247,8 @@ export const studentsService = {
    * @returns {Promise<void>}
    */
   async delete(id) {
+    // Antes de eliminar el estudiante, eliminar todas sus inscripciones
+    await studentSectionsService.deleteByStudent(id);
     await db.students.delete(id);
   },
 
@@ -178,6 +258,10 @@ export const studentsService = {
    * @returns {Promise<void>}
    */
   async deleteMany(ids) {
+    // Eliminar inscripciones de todos los estudiantes
+    for (const id of ids) {
+      await studentSectionsService.deleteByStudent(id);
+    }
     await db.students.bulkDelete(ids);
   },
 

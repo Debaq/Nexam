@@ -1,42 +1,44 @@
 import React, { useState } from 'react'
 import { MainLayout } from './shared/components/Layout/MainLayout'
+import { SectionsPage } from './features/sections/components/SectionsPage'
 import { ExamsPage } from './features/exams/components/ExamsPage'
 import { QuestionsPage } from './features/questions/components/QuestionsPage'
 import { StudentsPage } from './features/students/components/StudentsPage'
-import { CorrectionPage } from './features/correction/components/CorrectionPage'
 import { ReportsPage } from './features/analytics/components/ReportsPage'
+import { SettingsPage } from './shared/components/SettingsPage'
+import { GradeScaleGeneratorPage } from './shared/components/GradeScaleGeneratorPage'
+import { ThemeProvider } from './core/theme/ThemeProvider'
 
 function App() {
-  const [currentPage, setCurrentPage] = useState('exams')
+  const [currentPage, setCurrentPage] = useState('sections')
 
   const renderPage = () => {
     switch (currentPage) {
+      case 'sections':
+        return <SectionsPage />
       case 'exams':
         return <ExamsPage />
       case 'questions':
         return <QuestionsPage />
       case 'students':
         return <StudentsPage />
-      case 'correction':
-        return <CorrectionPage />
       case 'reports':
         return <ReportsPage />
+      case 'grade-scale':
+        return <GradeScaleGeneratorPage />
       case 'settings':
-        return (
-          <div className="p-8">
-            <h1 className="text-3xl font-bold mb-4">Configuración</h1>
-            <p className="text-muted-foreground">Próximamente...</p>
-          </div>
-        )
+        return <SettingsPage />
       default:
-        return <ExamsPage />
+        return <SectionsPage />
     }
   }
 
   return (
-    <MainLayout currentPath={currentPage} onNavigate={setCurrentPage}>
-      {renderPage()}
-    </MainLayout>
+    <ThemeProvider>
+      <MainLayout currentPath={currentPage} onNavigate={setCurrentPage}>
+        {renderPage()}
+      </MainLayout>
+    </ThemeProvider>
   )
 }
 

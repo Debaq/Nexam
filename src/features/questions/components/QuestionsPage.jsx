@@ -4,10 +4,45 @@ import { questionsService } from '../services/questionsService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
-import { Plus, Search, Filter, Trash2, Upload, FolderPlus, Folder, FileDown, Edit } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/shared/components/ui/tooltip';
+import { Plus, Search, Filter, Trash2, Upload, FolderPlus, Folder, FileDown, Edit, AlertTriangle } from 'lucide-react';
 import { QuestionFormModal } from './QuestionFormModal';
 import { ImportGiftModal } from './ImportGiftModal';
 import { CategoryManagerModal } from '@/shared/components/CategoryManagerModal';
+
+/**
+ * Detecta si la respuesta correcta tiene un número de palabras significativamente mayor
+ * que el promedio de las alternativas incorrectas (indica una pregunta fácil de detectar)
+ */
+const hasLongCorrectAnswer = (question) => {
+  if (question.type !== 'multiple' || !question.alternatives || question.alternatives.length < 2) {
+    return false;
+  }
+
+  const correctAlternatives = question.alternatives.filter(alt => alt.isCorrect);
+  const incorrectAlternatives = question.alternatives.filter(alt => !alt.isCorrect);
+
+  if (correctAlternatives.length === 0 || incorrectAlternatives.length === 0) {
+    return false;
+  }
+
+  // Contar palabras
+  const countWords = (text) => text.trim().split(/\s+/).length;
+
+  const correctWordCounts = correctAlternatives.map(alt => countWords(alt.text));
+  const incorrectWordCounts = incorrectAlternatives.map(alt => countWords(alt.text));
+
+  const avgCorrect = correctWordCounts.reduce((a, b) => a + b, 0) / correctWordCounts.length;
+  const avgIncorrect = incorrectWordCounts.reduce((a, b) => a + b, 0) / incorrectWordCounts.length;
+
+  // Si la respuesta correcta tiene 50% más palabras que el promedio de las incorrectas
+  return avgCorrect > avgIncorrect * 1.5;
+};
 
 export const QuestionsPage = () => {
   const { questions, isLoading, delete: deleteQuestion } = useQuestions();
@@ -47,6 +82,12 @@ export const QuestionsPage = () => {
     setEditingQuestion(null);
   };
 
+  // Actualizar categorías al crear/editar preguntas
+  const handleQuestionComplete = async () => {
+    // Cerrar modal
+    handleCloseModal();
+  };
+
   const handleExportCategory = async (category) => {
     try {
       const { filename, content, questionCount } = await questionsService.exportCategoryToGift(category);
@@ -70,14 +111,14 @@ export const QuestionsPage = () => {
 
   if (isLoading) {
     return (
-      <div className="p-8">
+      <div className="px-6 py-8">
         <p className="text-muted-foreground">Cargando preguntas...</p>
       </div>
     );
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="px-6 py-8 max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
@@ -218,6 +259,28 @@ export const QuestionsPage = () => {
                         </div>
                       </div>
                       <div className="flex gap-1">
+                        {hasLongCorrectAnswer(question) && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="text-amber-500 hover:text-amber-600 hover:bg-amber-50"
+                                >
+                                  <AlertTriangle className="w-4 h-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <p className="font-semibold mb-1">⚠️ Respuesta fácil de detectar</p>
+                                <p className="text-sm">
+                                  La respuesta correcta tiene significativamente más palabras que las alternativas incorrectas,
+                                  lo que puede hacer que la pregunta sea muy fácil de adivinar.
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -272,7 +335,7 @@ export const QuestionsPage = () => {
       <QuestionFormModal
         open={questionModalOpen}
         onClose={handleCloseModal}
-        onComplete={handleCloseModal}
+        onComplete={handleQuestionComplete}
         folders={categories.filter(c => c !== 'Todas')}
         question={editingQuestion}
       />
@@ -296,5 +359,3 @@ export const QuestionsPage = () => {
     </div>
   );
 };
-
-export default QuestionsPage;

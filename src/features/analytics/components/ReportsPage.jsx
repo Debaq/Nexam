@@ -4,7 +4,7 @@ import { BarChart3, TrendingUp } from 'lucide-react';
 
 export const ReportsPage = () => {
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="px-6 py-8 max-w-7xl mx-auto">
       <div className="mb-8">
         <h1 className="text-3xl font-bold">Reportes y Análisis</h1>
         <p className="text-muted-foreground mt-1">
@@ -48,5 +48,3 @@ export const ReportsPage = () => {
     </div>
   );
 };
-
-export default ReportsPage;

@@ -1,5 +1,0 @@
-# Esta carpeta contendrá los modelos ONNX
-# Estructura:
-# public/
-# └── models/
-#     └── yolov11n-marks.onnx

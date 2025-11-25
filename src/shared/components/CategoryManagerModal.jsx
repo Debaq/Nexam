@@ -109,5 +109,3 @@ export const CategoryManagerModal = ({ open, onClose, categories = [], onUpdate,
     </Dialog>
   );
 };
-
-export default CategoryManagerModal;

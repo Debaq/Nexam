@@ -129,5 +129,3 @@ export const ImportGiftModal = ({ open, onClose, onComplete }) => {
     </Dialog>
   );
 };
-
-export default ImportGiftModal;

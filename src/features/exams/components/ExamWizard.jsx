@@ -1,34 +1,44 @@
 import React, { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/shared/components/ui/dialog';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { Label } from '@/shared/components/ui/label';
 import { examService } from '../services/examService';
-import { pdfGenerator } from '@/core/export/pdfGenerator';
 import { CheckCircle } from 'lucide-react';
+import QuestionSelector from './QuestionSelector';
+import { useQuestions } from '@/features/questions/hooks/useQuestions';
 
 const STEPS = [
-  { id: 1, name: 'Configuración', description: 'Título, fecha y tipo' },
-  { id: 2, name: 'Preguntas', description: 'Seleccionar preguntas' },
-  { id: 3, name: 'Estudiantes', description: 'Asignar estudiantes' },
-  { id: 4, name: 'Opciones', description: 'Aleatorización' },
-  { id: 5, name: 'Confirmar', description: 'Revisar y generar' }
+  { id: 1, name: 'Tipo de Examen', description: 'Con base de datos o hoja de respuestas' },
+  { id: 2, name: 'Configuración', description: 'Título, fecha y variaciones' },
+  { id: 3, name: 'Preguntas', description: 'Seleccionar preguntas o configurar' },
+  { id: 4, name: 'Estudiantes', description: 'Asignar estudiantes' },
+  { id: 5, name: 'Opciones', description: 'Aleatorización' },
+  { id: 6, name: 'Confirmar', description: 'Revisar y generar' }
 ];
 
 export const ExamWizard = ({ open, onClose, onComplete }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [examData, setExamData] = useState({
+    examType: 'withDatabase', // 'withDatabase' o 'answerSheetOnly'
+    variations: 1, // Número de variaciones del examen (solo para withDatabase)
     title: '',
     date: new Date().toISOString().split('T')[0],
     duration: 90,
-    type: 'uniform',
     folder: 'Sin carpeta',
-    questions: [],
+    questions: [], // IDs de preguntas de la base de datos
+    answerSheetQuestions: [], // Estructura de preguntas para hojas de respuestas
     students: [],
     anonymousCount: 0,
     csvFile: null,
     pointsPerQuestion: 1,
     passingGrade: 60,
+    grading: {
+      maxGrade: 7.0,
+      minGrade: 1.0,
+      passingGrade: 4.0,
+      demandPercentage: 60
+    },
     randomization: {
       shuffleQuestions: false,
       shuffleAlternatives: false
@@ -63,6 +73,26 @@ export const ExamWizard = ({ open, onClose, onComplete }) => {
 
   const handleComplete = async () => {
     try {
+      // Validar preguntas según el tipo de examen
+      if (examData.examType === 'withDatabase') {
+        if (!examData.questions || examData.questions.length === 0) {
+          const confirmNoQuestions = window.confirm(
+            'No has seleccionado ninguna pregunta para este examen. ¿Deseas continuar de todas formas? ' +
+            'Podrás agregar preguntas más tarde desde la vista de detalle del examen.'
+          );
+
+          if (!confirmNoQuestions) {
+            return;
+          }
+        }
+      } else {
+        // Para examen de hoja de respuestas, verificar que haya preguntas configuradas
+        if (!examData.answerSheetQuestions || examData.answerSheetQuestions.length === 0) {
+          alert('Debes configurar al menos una pregunta para el examen de hoja de respuestas.');
+          return;
+        }
+      }
+
       // Crear examen
       const exam = await examService.create(examData);
 
@@ -81,17 +111,25 @@ export const ExamWizard = ({ open, onClose, onComplete }) => {
   const handleClose = () => {
     setCurrentStep(1);
     setExamData({
+      examType: 'withDatabase', // 'withDatabase' o 'answerSheetOnly'
+      variations: 1, // Número de variaciones del examen (solo para withDatabase)
       title: '',
       date: new Date().toISOString().split('T')[0],
       duration: 90,
-      type: 'uniform',
       folder: 'Sin carpeta',
-      questions: [],
+      questions: [], // IDs de preguntas de la base de datos
+      answerSheetQuestions: [], // Estructura de preguntas para hojas de respuestas
       students: [],
       anonymousCount: 0,
       csvFile: null,
       pointsPerQuestion: 1,
       passingGrade: 60,
+      grading: {
+        maxGrade: 7.0,
+        minGrade: 1.0,
+        passingGrade: 4.0,
+        demandPercentage: 60
+      },
       randomization: {
         shuffleQuestions: false,
         shuffleAlternatives: false
@@ -113,15 +151,17 @@ export const ExamWizard = ({ open, onClose, onComplete }) => {
   const renderStepContent = () => {
     switch (currentStep) {
       case 1:
-        return <Step1Config examData={examData} updateExamData={updateExamData} />;
+        return <Step1ExamType examData={examData} updateExamData={updateExamData} />;
       case 2:
-        return <Step2Questions examData={examData} updateExamData={updateExamData} />;
+        return <Step2Config examData={examData} updateExamData={updateExamData} />;
       case 3:
-        return <Step3Students examData={examData} updateExamData={updateExamData} />;
+        return <Step3Questions examData={examData} updateExamData={updateExamData} />;
       case 4:
-        return <Step4Options examData={examData} updateExamData={updateExamData} />;
+        return <Step4Students examData={examData} updateExamData={updateExamData} />;
       case 5:
-        return <Step5Confirm examData={examData} />;
+        return <Step5Options examData={examData} updateExamData={updateExamData} />;
+      case 6:
+        return <Step6Confirm examData={examData} />;
       default:
         return null;
     }
@@ -130,11 +170,20 @@ export const ExamWizard = ({ open, onClose, onComplete }) => {
   const canProceed = () => {
     switch (currentStep) {
       case 1:
-        return examData.title.trim() !== '' && examData.date !== '';
+        return examData.examType === 'withDatabase' || examData.examType === 'answerSheetOnly';
       case 2:
-        return true; // Preguntas son opcionales ahora
+        return examData.title.trim() !== '' && examData.date !== '';
       case 3:
-        return examData.type === 'uniform' || examData.students.length > 0 || examData.anonymousCount > 0;
+        // Para examen con base de datos: verificar que haya preguntas o que se vayan a añadir más tarde
+        // Para hoja de respuestas: verificar que se hayan definido preguntas
+        if (examData.examType === 'withDatabase') {
+          return true; // Las preguntas se pueden añadir en el paso siguiente
+        } else {
+          // Para hoja de respuestas, verificar que se hayan definido las preguntas
+          return examData.answerSheetQuestions.length > 0;
+        }
+      case 4:
+        return true; // No es obligatorio seleccionar estudiantes
       default:
         return true;
     }
@@ -145,6 +194,9 @@ export const ExamWizard = ({ open, onClose, onComplete }) => {
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Crear Nuevo Examen</DialogTitle>
+          <DialogDescription>
+            Configura un nuevo examen paso a paso: tipo, preguntas, estudiantes y opciones de personalización.
+          </DialogDescription>
         </DialogHeader>
 
         {/* Steps indicator */}
@@ -212,115 +264,398 @@ export const ExamWizard = ({ open, onClose, onComplete }) => {
   );
 };
 
-// Step 1: Configuration
-const Step1Config = ({ examData, updateExamData }) => (
-  <div className="space-y-4">
-    <div>
-      <Label htmlFor="title">Título del Examen *</Label>
-      <Input
-        id="title"
-        value={examData.title}
-        onChange={(e) => updateExamData('title', e.target.value)}
-        placeholder="Ej: Examen de Matemáticas - Unidad 1"
-      />
-    </div>
-
-    <div className="grid grid-cols-2 gap-4">
-      <div>
-        <Label htmlFor="date">Fecha *</Label>
-        <Input
-          id="date"
-          type="date"
-          value={examData.date}
-          onChange={(e) => updateExamData('date', e.target.value)}
-        />
-      </div>
-
-      <div>
-        <Label htmlFor="duration">Duración (minutos)</Label>
-        <Input
-          id="duration"
-          type="number"
-          value={examData.duration}
-          onChange={(e) => updateExamData('duration', parseInt(e.target.value))}
-          min="1"
-        />
-      </div>
-    </div>
-
-    <div>
-      <Label htmlFor="folder">Carpeta / Categoría</Label>
-      <Input
-        id="folder"
-        value={examData.folder}
-        onChange={(e) => updateExamData('folder', e.target.value)}
-        placeholder="Ej: Matemáticas 2024"
-      />
-      <p className="text-xs text-muted-foreground mt-1">
-        Organiza tus exámenes por temática o periodo
-      </p>
-    </div>
-
-    <div>
-      <Label>Tipo de Evaluación</Label>
-      <div className="flex gap-4 mt-2">
-        <label className="flex items-center gap-2">
-          <input
-            type="radio"
-            name="type"
-            value="uniform"
-            checked={examData.type === 'uniform'}
-            onChange={(e) => updateExamData('type', e.target.value)}
-          />
-          <span>Uniforme (mismo examen para todos)</span>
-        </label>
-        <label className="flex items-center gap-2">
-          <input
-            type="radio"
-            name="type"
-            value="differentiated"
-            checked={examData.type === 'differentiated'}
-            onChange={(e) => updateExamData('type', e.target.value)}
-          />
-          <span>Diferenciado (código único por estudiante)</span>
-        </label>
-      </div>
-    </div>
-  </div>
-);
-
-// Step 2: Select Questions
-const Step2Questions = ({ examData, updateExamData }) => {
+// Step 1: Choose Exam Type
+const Step1ExamType = ({ examData, updateExamData }) => {
   return (
-    <div className="space-y-4">
-      <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-        <p className="text-sm text-blue-900">
-          <strong>Opcional:</strong> Puedes agregar preguntas ahora o hacerlo después desde el banco de preguntas.
-        </p>
-      </div>
-
-      <div className="text-center py-8">
-        <p className="text-muted-foreground mb-4">
-          {examData.questions.length === 0
-            ? 'No hay preguntas agregadas aún'
-            : `${examData.questions.length} pregunta(s) seleccionada(s)`
-          }
-        </p>
-        <Button variant="outline" disabled>
-          Seleccionar del Banco de Preguntas
-          <span className="ml-2 text-xs">(Próximamente)</span>
-        </Button>
-      </div>
-
-      <p className="text-xs text-center text-muted-foreground">
-        Puedes continuar sin preguntas y agregarlas más tarde
+    <div className="space-y-6">
+      <h3 className="text-lg font-semibold text-gray-900">Tipo de Examen</h3>
+      <p className="text-sm text-muted-foreground">
+        Elige cómo será generado este examen
       </p>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+        <div
+          className={`p-6 border-2 rounded-lg cursor-pointer transition-all ${
+            examData.examType === 'withDatabase'
+              ? 'border-primary bg-primary/5'
+              : 'border-gray-200 hover:border-gray-300'
+          }`}
+          onClick={() => updateExamData('examType', 'withDatabase')}
+        >
+          <div className="font-semibold text-lg mb-2">Con Base de Datos</div>
+          <ul className="text-sm text-muted-foreground space-y-1">
+            <li>• Basado en preguntas de la base de datos</li>
+            <li>• Seleccionar desde el banco de preguntas</li>
+            <li>• Puedes definir variaciones del examen</li>
+            <li>• Ideal para exámenes con preguntas reutilizables</li>
+          </ul>
+        </div>
+
+        <div
+          className={`p-6 border-2 rounded-lg cursor-pointer transition-all ${
+            examData.examType === 'answerSheetOnly'
+              ? 'border-primary bg-primary/5'
+              : 'border-gray-200 hover:border-gray-300'
+          }`}
+          onClick={() => updateExamData('examType', 'answerSheetOnly')}
+        >
+          <div className="font-semibold text-lg mb-2">Solo Hoja de Respuestas</div>
+          <ul className="text-sm text-muted-foreground space-y-1">
+            <li>• Configurar preguntas directamente</li>
+            <li>• Definir número de preguntas y alternativas</li>
+            <li>• Seleccionar respuestas correctas</li>
+            <li>• Ideal para exámenes únicos o temporales</li>
+          </ul>
+        </div>
+      </div>
+
+      <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg mt-4">
+        <p className="text-sm text-blue-900">
+          <strong>Consejo:</strong> Usa "Con Base de Datos" para preguntas que reutilizarás frecuentemente. 
+          Usa "Solo Hoja de Respuestas" para crear exámenes temporales sin tener que gestionar preguntas en la base de datos.
+        </p>
+      </div>
     </div>
   );
 };
 
-// Step 3: Assign Students
-const Step3Students = ({ examData, updateExamData }) => {
+// Step 2: Configuration
+const Step2Config = ({ examData, updateExamData }) => {
+  const updateGradingField = (field, value) => {
+    updateExamData('grading', {
+      ...examData.grading,
+      [field]: parseFloat(value) || 0
+    });
+  };
+
+  const handleVariationsChange = (value) => {
+    const variations = Math.max(1, parseInt(value) || 1);
+    updateExamData('variations', variations);
+
+    // Si hay más de una variación, activar mezcla de preguntas
+    if (variations > 1) {
+      updateExamData('randomization', {
+        ...examData.randomization,
+        shuffleQuestions: true
+      });
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Información Básica */}
+      <div className="space-y-4">
+        <h3 className="text-lg font-semibold text-gray-900">Información Básica</h3>
+
+        <div>
+          <Label htmlFor="title">Título del Examen *</Label>
+          <Input
+            id="title"
+            value={examData.title}
+            onChange={(e) => updateExamData('title', e.target.value)}
+            placeholder="Ej: Examen de Matemáticas - Unidad 1"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="date">Fecha *</Label>
+            <Input
+              id="date"
+              type="date"
+              value={examData.date}
+              onChange={(e) => updateExamData('date', e.target.value)}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="duration">Duración (minutos)</Label>
+            <Input
+              id="duration"
+              type="number"
+              value={examData.duration}
+              onChange={(e) => updateExamData('duration', parseInt(e.target.value))}
+              min="1"
+            />
+          </div>
+        </div>
+
+        <div>
+          <Label htmlFor="folder">Carpeta / Categoría</Label>
+          <Input
+            id="folder"
+            value={examData.folder}
+            onChange={(e) => updateExamData('folder', e.target.value)}
+            placeholder="Ej: Matemáticas 2024"
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Organiza tus exámenes por temática o periodo
+          </p>
+        </div>
+
+        {/* Configuración de variaciones */}
+        <div>
+          <Label htmlFor="variations">Número de Variaciones</Label>
+          <Input
+            id="variations"
+            type="number"
+            value={examData.variations}
+            onChange={(e) => handleVariationsChange(e.target.value)}
+            min="1"
+            max="10"
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Número de versiones diferentes del examen (mezcla preguntas)
+          </p>
+        </div>
+      </div>
+
+      {/* Configuración de Calificación */}
+      <div className="space-y-4 pt-4 border-t">
+        <h3 className="text-lg font-semibold text-gray-900">Escala de Calificación</h3>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="maxGrade">Nota Máxima</Label>
+            <Input
+              id="maxGrade"
+              type="number"
+              step="0.1"
+              min="1"
+              max="10"
+              value={examData.grading.maxGrade}
+              onChange={(e) => updateGradingField('maxGrade', e.target.value)}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="minGrade">Nota Mínima</Label>
+            <Input
+              id="minGrade"
+              type="number"
+              step="0.1"
+              min="1"
+              max="10"
+              value={examData.grading.minGrade}
+              onChange={(e) => updateGradingField('minGrade', e.target.value)}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="passingGrade">Nota de Aprobación</Label>
+            <Input
+              id="passingGrade"
+              type="number"
+              step="0.1"
+              min="1"
+              max="10"
+              value={examData.grading.passingGrade}
+              onChange={(e) => updateGradingField('passingGrade', e.target.value)}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="demandPercentage">% de Exigencia</Label>
+            <Input
+              id="demandPercentage"
+              type="number"
+              step="1"
+              min="1"
+              max="100"
+              value={examData.grading.demandPercentage}
+              onChange={(e) => updateGradingField('demandPercentage', e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Porcentaje mínimo para alcanzar la nota de aprobación
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Step 3: Select Questions
+const Step3Questions = ({ examData, updateExamData }) => {
+  // Si es examen con base de datos, usar el selector de preguntas existente
+  if (examData.examType === 'withDatabase') {
+    const { questions } = useQuestions();
+
+    const handleQuestionsChange = (questions) => {
+      // Extraer solo los IDs de las preguntas para almacenar
+      const questionIds = questions.map(q => q.id);
+      updateExamData('questions', questionIds);
+    };
+
+    // Convertir las preguntas seleccionadas a objetos completos para el selector
+    const selectedQuestions = examData.questions.map(questionId =>
+      questions.find(q => q.id === questionId)
+    ).filter(Boolean); // Filtrar las que no se encuentran
+
+    return (
+      <div className="space-y-4">
+        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <p className="text-sm text-blue-900">
+            <strong>Importante:</strong> Selecciona las preguntas para este examen. Puedes continuar sin preguntas y agregarlas más tarde.
+          </p>
+        </div>
+
+        <QuestionSelector
+          selectedQuestions={selectedQuestions}
+          onQuestionsChange={handleQuestionsChange}
+        />
+
+        <div className="flex justify-between items-center mt-4 p-3 bg-muted rounded-lg">
+          <p className="text-sm text-muted-foreground">
+            Preguntas seleccionadas: {examData.questions.length}
+          </p>
+          <div className="text-sm font-medium">
+            {examData.questions.length > 0 && (
+              <span className="text-green-600">
+                ✓ {examData.questions.length} pregunta(s) agregada(s)
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  } 
+  // Si es examen de hoja de respuestas, mostrar configuración de preguntas
+  else if (examData.examType === 'answerSheetOnly') {
+    const [numQuestions, setNumQuestions] = useState(examData.answerSheetQuestions.length || 5);
+    const [numAlternatives, setNumAlternatives] = useState(examData.answerSheetQuestions[0]?.alternatives?.length || 4);
+
+    // Actualizar preguntas cuando cambie el número de preguntas o alternativas
+    React.useEffect(() => {
+      // Crear o actualizar la estructura de las preguntas
+      const updatedQuestions = [];
+      for (let i = 0; i < numQuestions; i++) {
+        if (examData.answerSheetQuestions[i]) {
+          // Mantener la pregunta existente si ya existe
+          updatedQuestions.push({
+            ...examData.answerSheetQuestions[i],
+            alternatives: examData.answerSheetQuestions[i].alternatives.slice(0, numAlternatives)
+          });
+        } else {
+          // Crear nueva pregunta con alternativas vacías
+          const alternatives = [];
+          for (let j = 0; j < numAlternatives; j++) {
+            alternatives.push({
+              text: '',
+              isCorrect: false,
+              id: `alt-${i}-${j}`
+            });
+          }
+          updatedQuestions.push({
+            id: `q-${i}`,
+            text: `Pregunta ${i + 1}`,
+            alternatives: alternatives
+          });
+        }
+      }
+      
+      updateExamData('answerSheetQuestions', updatedQuestions);
+    }, [numQuestions, numAlternatives]);
+
+    const updateAlternativeText = (questionIndex, alternativeIndex, text) => {
+      const updatedQuestions = [...examData.answerSheetQuestions];
+      updatedQuestions[questionIndex].alternatives[alternativeIndex].text = text;
+      updateExamData('answerSheetQuestions', updatedQuestions);
+    };
+
+    const toggleAlternativeCorrect = (questionIndex, alternativeIndex) => {
+      const updatedQuestions = [...examData.answerSheetQuestions];
+      
+      // Desmarcar todas las alternativas de esta pregunta como correctas
+      updatedQuestions[questionIndex].alternatives.forEach(alt => {
+        alt.isCorrect = false;
+      });
+      
+      // Marcar solo la seleccionada como correcta
+      updatedQuestions[questionIndex].alternatives[alternativeIndex].isCorrect = true;
+      
+      updateExamData('answerSheetQuestions', updatedQuestions);
+    };
+
+    return (
+      <div className="space-y-6">
+        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <p className="text-sm text-blue-900">
+            <strong>Configuración de Examen:</strong> Define el número de preguntas y alternativas para crear la hoja de respuestas.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="numQuestions">Número de Preguntas</Label>
+            <Input
+              id="numQuestions"
+              type="number"
+              value={numQuestions}
+              onChange={(e) => {
+                const value = Math.max(1, parseInt(e.target.value) || 1);
+                setNumQuestions(value);
+              }}
+              min="1"
+              max="100"
+            />
+          </div>
+          
+          <div>
+            <Label htmlFor="numAlternatives">Número de Alternativas por Pregunta</Label>
+            <Input
+              id="numAlternatives"
+              type="number"
+              value={numAlternatives}
+              onChange={(e) => {
+                const value = Math.max(2, parseInt(e.target.value) || 2);
+                setNumAlternatives(value);
+              }}
+              min="2"
+              max="10"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold">Preguntas y Alternativas</h3>
+          
+          {examData.answerSheetQuestions.map((question, questionIndex) => (
+            <div key={question.id} className="border rounded-lg p-4">
+              <h4 className="font-medium mb-3">Pregunta {questionIndex + 1}</h4>
+              
+              <div className="space-y-3">
+                {question.alternatives.map((alternative, altIndex) => (
+                  <div key={alternative.id} className="flex items-center gap-3">
+                    <input
+                      type="radio"
+                      id={`correct-${questionIndex}-${altIndex}`}
+                      name={`correct-${questionIndex}`}
+                      checked={alternative.isCorrect}
+                      onChange={() => toggleAlternativeCorrect(questionIndex, altIndex)}
+                    />
+                    <Label htmlFor={`correct-${questionIndex}-${altIndex}`} className="flex-1">
+                      <Input
+                        value={alternative.text}
+                        onChange={(e) => updateAlternativeText(questionIndex, altIndex, e.target.value)}
+                        placeholder={`Alternativa ${String.fromCharCode(65 + altIndex)}`}
+                      />
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+};
+
+// Step 4: Assign Students
+const Step4Students = ({ examData, updateExamData }) => {
   const [mode, setMode] = React.useState('select'); // select, csv, anonymous
 
   const handleCSVUpload = (e) => {
@@ -425,8 +760,8 @@ const Step3Students = ({ examData, updateExamData }) => {
   );
 };
 
-// Step 4: PDF Options & Randomization
-const Step4Options = ({ examData, updateExamData }) => {
+// Step 5: PDF Options & Randomization
+const Step5Options = ({ examData, updateExamData }) => {
   const handleLogoUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -441,6 +776,9 @@ const Step4Options = ({ examData, updateExamData }) => {
     }
   };
 
+  // Para examen de hoja de respuestas con más de una variación, forzar mezcla de preguntas
+  const isAnswerSheetWithVariations = examData.examType === 'answerSheetOnly' && examData.variations > 1;
+  
   return (
     <div className="space-y-6">
       {/* Encabezado del PDF */}
@@ -634,17 +972,27 @@ const Step4Options = ({ examData, updateExamData }) => {
           <label className="flex items-start gap-3">
             <input
               type="checkbox"
-              checked={examData.randomization.shuffleQuestions}
-              onChange={(e) => updateExamData('randomization', {
-                ...examData.randomization,
-                shuffleQuestions: e.target.checked
-              })}
+              checked={examData.randomization.shuffleQuestions || isAnswerSheetWithVariations}
+              onChange={(e) => {
+                if (!isAnswerSheetWithVariations) {
+                  updateExamData('randomization', {
+                    ...examData.randomization,
+                    shuffleQuestions: e.target.checked
+                  });
+                }
+              }}
+              disabled={isAnswerSheetWithVariations}
               className="mt-1"
             />
             <div>
               <div className="font-medium">Mezclar orden de preguntas</div>
               <div className="text-sm text-muted-foreground">
                 Cada PDF tendrá las preguntas en diferente orden
+                {isAnswerSheetWithVariations && (
+                  <span className="block text-blue-600 font-medium">
+                    Obligatorio: activado porque hay más de una variación
+                  </span>
+                )}
               </div>
             </div>
           </label>
@@ -672,12 +1020,31 @@ const Step4Options = ({ examData, updateExamData }) => {
   );
 };
 
-// Step 5: Confirmation
-const Step5Confirm = ({ examData }) => (
+// Step 6: Confirmation
+const Step6Confirm = ({ examData }) => (
   <div className="space-y-4">
     <div className="p-4 bg-muted rounded-lg">
       <h3 className="font-semibold mb-3">Resumen del Examen</h3>
       <div className="space-y-3">
+        {/* Tipo de examen */}
+        <div>
+          <h4 className="text-sm font-medium mb-2">Tipo de Examen</h4>
+          <div className="space-y-1 text-sm pl-3">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Modalidad:</span>
+              <span>
+                {examData.examType === 'withDatabase'
+                  ? 'Con Base de Datos'
+                  : 'Solo Hoja de Respuestas'}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Variaciones:</span>
+              <span>{examData.variations}</span>
+            </div>
+          </div>
+        </div>
+
         {/* Información básica */}
         <div>
           <h4 className="text-sm font-medium mb-2">Información Básica</h4>
@@ -700,10 +1067,6 @@ const Step5Confirm = ({ examData }) => (
               <span className="text-muted-foreground">Duración:</span>
               <span>{examData.duration} minutos</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Tipo:</span>
-              <span>{examData.type === 'uniform' ? 'Uniforme' : 'Diferenciado'}</span>
-            </div>
           </div>
         </div>
 
@@ -711,10 +1074,17 @@ const Step5Confirm = ({ examData }) => (
         <div>
           <h4 className="text-sm font-medium mb-2">Contenido</h4>
           <div className="space-y-1 text-sm pl-3">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Preguntas:</span>
-              <span>{examData.questions.length || 'Ninguna (agregar después)'}</span>
-            </div>
+            {examData.examType === 'withDatabase' ? (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Preguntas (base de datos):</span>
+                <span>{examData.questions.length || 'Ninguna (agregar después)'}</span>
+              </div>
+            ) : (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Preguntas (hoja de respuestas):</span>
+                <span>{examData.answerSheetQuestions.length || 'Ninguna'}</span>
+              </div>
+            )}
             <div className="flex justify-between">
               <span className="text-muted-foreground">Estudiantes:</span>
               <span>
