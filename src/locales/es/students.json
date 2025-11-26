@@ -1,0 +1,27 @@
+{
+  "students": {
+    "loading": "Cargando estudiantes...",
+    "title": "Estudiantes",
+    "create": {
+      "title": "Nuevo Estudiante",
+      "nameField": "Nombre *",
+      "lastNameField": "Apellido *",
+      "rutField": "RUT *",
+      "emailField": "Email",
+      "generalError": "Error general"
+    },
+    "sections": {
+      "loading": "Cargando secciones...",
+      "title": "Secciones y Asignaturas",
+      "code": "Código:",
+      "studentsCount": "Estudiantes:",
+      "examsCount": "Evaluaciones:"
+    },
+    "fields": {
+      "name": "Nombre",
+      "lastName": "Apellido",
+      "rut": "RUT",
+      "email": "Email"
+    }
+  }
+}

@@ -1,11 +1,8 @@
 /**
  * 🔍 Vision Service - Pipeline de Computer Vision
  *
- * Maneja preprocesamiento de imágenes con OpenCV.js:
- * - Detección de 3 marcadores QR (alineación)
- * - Detección de marcas laterales (filas)
- * - Cálculo de geometría del grid
- * - Extracción de ROIs (RUT + Tablas completas)
+ * Adaptado del HTML de referencia - Algoritmo probado y funcional
+ * Pipeline: Detección marcadores → Warp → Detección grid → Extracción ROIs
  */
 
 class VisionService {
@@ -81,394 +78,349 @@ class VisionService {
   }
 
   /**
-   * Convierte Mat a canvas (para procesamiento adicional)
+   * 📐 PASO 1: Detectar 3 marcadores de esquina
+   * Algoritmo del HTML - 100% funcional
    */
-  matToCanvas(mat) {
-    const canvas = document.createElement('canvas');
-    window.cv.imshow(canvas, mat);
-    return canvas;
+  detectCornerMarkers(srcMat) {
+    const w = srcMat.cols;
+    const h = srcMat.rows;
+    const areaTotal = w * h;
+
+    // 1. Convertir a gris
+    const gray = new window.cv.Mat();
+    window.cv.cvtColor(srcMat, gray, window.cv.COLOR_RGBA2GRAY);
+
+    // 2. Threshold adaptativo invertido (detecta cuadros negros)
+    const threshCorners = new window.cv.Mat();
+    window.cv.adaptiveThreshold(
+      gray,
+      threshCorners,
+      255,
+      window.cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+      window.cv.THRESH_BINARY_INV,
+      21,
+      10
+    );
+
+    // 3. Buscar contornos
+    const contours = new window.cv.MatVector();
+    const hierarchy = new window.cv.Mat();
+    window.cv.findContours(
+      threshCorners,
+      contours,
+      hierarchy,
+      window.cv.RETR_TREE,
+      window.cv.CHAIN_APPROX_SIMPLE
+    );
+
+    const marcadores = [];
+
+    // 4. Filtrar cuadrados
+    for (let i = 0; i < contours.size(); i++) {
+      const cnt = contours.get(i);
+      const approx = new window.cv.Mat();
+      window.cv.approxPolyDP(cnt, approx, 0.04 * window.cv.arcLength(cnt, true), true);
+
+      if (approx.rows === 4) {
+        const r = window.cv.boundingRect(approx);
+        const area = window.cv.contourArea(approx);
+
+        // Rango: 0.1% a 10% del área total
+        if (area > areaTotal * 0.001 && area < areaTotal * 0.1) {
+          marcadores.push({
+            rect: r,
+            area: area,
+            x: r.x + r.width / 2,
+            y: r.y + r.height / 2,
+            width: r.width,
+            height: r.height
+          });
+        }
+      }
+      approx.delete();
+    }
+
+    console.log(`   📍 Marcadores encontrados: ${marcadores.length}`);
+
+    // 5. Ordenar por área y tomar los 3 más grandes
+    marcadores.sort((a, b) => b.area - a.area);
+
+    if (marcadores.length < 3) {
+      console.warn(`   ⚠️ Solo ${marcadores.length} marcadores (se necesitan 3)`);
+      gray.delete();
+      threshCorners.delete();
+      contours.delete();
+      hierarchy.delete();
+      return null;
+    }
+
+    const esquinas = marcadores.slice(0, 3);
+
+    // 6. Identificar posiciones (TL, TR, BL)
+    const pts = esquinas.map(p => ({ x: p.x, y: p.y }));
+    pts.sort((a, b) => a.y - b.y);
+
+    const top = [pts[0], pts[1]].sort((a, b) => a.x - b.x);
+    const tl = { ...esquinas.find(e => e.x === top[0].x && e.y === top[0].y) };
+    const tr = { ...esquinas.find(e => e.x === top[1].x && e.y === top[1].y) };
+    const bl = { ...esquinas.find(e => e.x === pts[2].x && e.y === pts[2].y) };
+
+    console.log(`   ✓ TL: (${tl.x.toFixed(0)}, ${tl.y.toFixed(0)})`);
+    console.log(`   ✓ TR: (${tr.x.toFixed(0)}, ${tr.y.toFixed(0)})`);
+    console.log(`   ✓ BL: (${bl.x.toFixed(0)}, ${bl.y.toFixed(0)})`);
+
+    // Cleanup
+    gray.delete();
+    threshCorners.delete();
+    contours.delete();
+    hierarchy.delete();
+
+    return { topLeft: tl, topRight: tr, bottomLeft: bl };
   }
 
   /**
-   * 📐 PASO 1: Preprocesamiento
-   * Grayscale + Noise reduction + Binarization
+   * 🔄 PASO 2: Warp perspective (corrección de perspectiva)
+   * Algoritmo del HTML - calcula BR geométricamente
    */
-  preprocessImage(mat) {
-    const gray = new window.cv.Mat();
-    const blurred = new window.cv.Mat();
+  warpPerspective(srcMat, markers) {
+    const tl = markers.topLeft;
+    const tr = markers.topRight;
+    const bl = markers.bottomLeft;
+
+    // Calcular bottom-right geométricamente
+    const br = {
+      x: tr.x + (bl.x - tl.x),
+      y: bl.y + (tr.y - tl.y)
+    };
+
+    console.log(`   📐 BR inferido: (${br.x.toFixed(0)}, ${br.y.toFixed(0)})`);
+
+    // Calcular dimensiones del rectángulo destino
+    const w = Math.max(
+      Math.hypot(br.x - bl.x, br.y - bl.y),
+      Math.hypot(tr.x - tl.x, tr.y - tl.y)
+    );
+    const h = Math.max(
+      Math.hypot(tr.x - br.x, tr.y - br.y),
+      Math.hypot(tl.x - bl.x, tl.y - bl.y)
+    );
+
+    console.log(`   📏 Dimensiones: ${w.toFixed(0)}x${h.toFixed(0)}px`);
+
+    // Puntos origen
+    const srcTri = window.cv.matFromArray(4, 1, window.cv.CV_32FC2, [
+      tl.x, tl.y,
+      tr.x, tr.y,
+      br.x, br.y,
+      bl.x, bl.y
+    ]);
+
+    // Puntos destino (rectángulo perfecto)
+    const dstTri = window.cv.matFromArray(4, 1, window.cv.CV_32FC2, [
+      0, 0,
+      w, 0,
+      w, h,
+      0, h
+    ]);
+
+    // Aplicar transformación
+    const M = window.cv.getPerspectiveTransform(srcTri, dstTri);
+    const warpedMat = new window.cv.Mat();
+    window.cv.warpPerspective(srcMat, warpedMat, M, new window.cv.Size(w, h));
+
+    // Cleanup
+    srcTri.delete();
+    dstTri.delete();
+    M.delete();
+
+    console.log(`   ✓ Warp completado`);
+    return warpedMat;
+  }
+
+  /**
+   * 📊 PASO 3: Detectar grid de respuestas
+   * Algoritmo del HTML - detecta anclas izq/der y empareja filas
+   */
+  detectAnswerGrid(warpedMat, params = {}) {
+    const {
+      threshVal = 225,
+      edgeMargin = 15,
+      yTolerance = 10,
+      xTolFactor = 1.5
+    } = params;
+
+    const w = warpedMat.cols;
+    const h = warpedMat.rows;
+
+    console.log(`   📐 Dimensiones imagen warpeada: ${w}x${h}px`);
+
+    // 1. Convertir a gris y binarizar
+    const warpedGray = new window.cv.Mat();
+    window.cv.cvtColor(warpedMat, warpedGray, window.cv.COLOR_RGBA2GRAY);
+
     const binary = new window.cv.Mat();
+    window.cv.threshold(warpedGray, binary, threshVal, 255, window.cv.THRESH_BINARY_INV);
 
-    try {
-      // Convertir a escala de grises
-      if (mat.channels() === 4) {
-        window.cv.cvtColor(mat, gray, window.cv.COLOR_RGBA2GRAY);
-      } else if (mat.channels() === 3) {
-        window.cv.cvtColor(mat, gray, window.cv.COLOR_RGB2GRAY);
-      } else {
-        mat.copyTo(gray);
+    // 2. Buscar contornos
+    const contoursGrid = new window.cv.MatVector();
+    const hierarchy = new window.cv.Mat();
+    window.cv.findContours(
+      binary,
+      contoursGrid,
+      hierarchy,
+      window.cv.RETR_EXTERNAL,
+      window.cv.CHAIN_APPROX_SIMPLE
+    );
+
+    console.log(`   🔍 Total contornos encontrados: ${contoursGrid.size()}`);
+
+    const rawLeft = [];
+    const rawRight = [];
+    const midX = w / 2;
+    const allContours = []; // Para debugging
+
+    // 3. Clasificar anclas izquierda/derecha
+    for (let i = 0; i < contoursGrid.size(); i++) {
+      const r = window.cv.boundingRect(contoursGrid.get(i));
+      const area = window.cv.contourArea(contoursGrid.get(i));
+      const ratio = r.width / r.height;
+      const cx = r.x + r.width / 2;
+      const cy = r.y + r.height / 2;
+
+      allContours.push({ area, ratio, cx, cy, w: r.width, h: r.height });
+
+      // Filtros: área razonable, aspect ratio cuadrado, no en bordes
+      if (area > 30 && area < 5000 && ratio > 0.5 && ratio < 1.8) {
+        if (cx > edgeMargin && cx < w - edgeMargin && cy > edgeMargin && cy < h - edgeMargin) {
+          const item = { x: cx, y: cy, w: r.width, h: r.height, rect: r };
+          if (cx < midX) {
+            rawLeft.push(item);
+          } else {
+            rawRight.push(item);
+          }
+        }
       }
+    }
 
-      // Reducción de ruido con Gaussian Blur
-      const ksize = new window.cv.Size(5, 5);
-      window.cv.GaussianBlur(gray, blurred, ksize, 0);
+    console.log(`   🔍 Anclas brutas: Izq=${rawLeft.length}, Der=${rawRight.length}`);
 
-      // Binarización adaptativa
-      window.cv.adaptiveThreshold(
-        blurred,
-        binary,
-        255,
-        window.cv.ADAPTIVE_THRESH_GAUSSIAN_C,
-        window.cv.THRESH_BINARY,
-        11,
+    // Debug: Mostrar algunos contornos para entender por qué no se detectan
+    if (rawLeft.length === 0 && rawRight.length === 0) {
+      console.warn(`   ⚠️ NO SE DETECTARON ANCLAS. Analizando contornos...`);
+      const sample = allContours.slice(0, 10);
+      console.table(sample);
+    }
+
+    // 4. Limpiar columnas (eliminar outliers en X)
+    const cleanColumn = (anchors) => {
+      if (anchors.length === 0) return [];
+      const sorted = [...anchors].sort((a, b) => a.x - b.x);
+      const midVal = sorted[Math.floor(sorted.length / 2)].x;
+      const avgW = anchors.reduce((s, a) => s + a.w, 0) / anchors.length;
+      const tol = avgW * xTolFactor;
+      return anchors.filter(a => Math.abs(a.x - midVal) < tol);
+    };
+
+    const cleanLeft = cleanColumn(rawLeft);
+    const cleanRight = cleanColumn(rawRight);
+
+    console.log(`   ✨ Anclas limpias: Izq=${cleanLeft.length}, Der=${cleanRight.length}`);
+
+    // 5. Calcular ancho promedio de anclas
+    const allAnchors = [...cleanLeft, ...cleanRight];
+    const globalAvgW = allAnchors.length > 0
+      ? allAnchors.reduce((sum, a) => sum + a.w, 0) / allAnchors.length
+      : 0;
+
+    // 6. Calcular X promedio de cada columna
+    const avgAnchorL = cleanLeft.length > 0
+      ? cleanLeft.reduce((s, a) => s + a.x, 0) / cleanLeft.length
+      : 0;
+    const avgAnchorR = cleanRight.length > 0
+      ? cleanRight.reduce((s, a) => s + a.x, 0) / cleanRight.length
+      : 0;
+
+    // 7. Emparejar anclas izq/der en filas
+    const pairs = [];
+    cleanLeft.forEach(L => {
+      let bestR = null;
+      let minDiff = Infinity;
+      cleanRight.forEach(R => {
+        const diff = Math.abs(L.y - R.y);
+        if (diff < yTolerance && diff < minDiff) {
+          minDiff = diff;
+          bestR = R;
+        }
+      });
+      if (bestR) {
+        pairs.push({ L, R: bestR });
+      }
+    });
+
+    console.log(`   ✓ Filas emparejadas: ${pairs.length}`);
+
+    // Cleanup
+    warpedGray.delete();
+    binary.delete();
+    contoursGrid.delete();
+    hierarchy.delete();
+
+    return {
+      pairs,
+      avgAnchorL,
+      avgAnchorR,
+      globalAvgW,
+      dimensions: { w, h, midX }
+    };
+  }
+
+  /**
+   * 🎨 Dibujar marcadores sobre imagen (debug)
+   */
+  drawMarkersOnImage(mat, markers) {
+    const visualMat = mat.clone();
+
+    // Convertir a color si es grayscale
+    if (visualMat.channels() === 1) {
+      window.cv.cvtColor(visualMat, visualMat, window.cv.COLOR_GRAY2RGB);
+    }
+
+    const drawMarker = (marker, color, label) => {
+      if (!marker) return;
+
+      const pt1 = new window.cv.Point(
+        Math.floor(marker.x - marker.width / 2),
+        Math.floor(marker.y - marker.height / 2)
+      );
+      const pt2 = new window.cv.Point(
+        Math.floor(marker.x + marker.width / 2),
+        Math.floor(marker.y + marker.height / 2)
+      );
+
+      window.cv.rectangle(visualMat, pt1, pt2, color, 4);
+      window.cv.circle(visualMat, new window.cv.Point(Math.floor(marker.x), Math.floor(marker.y)), 5, color, -1);
+      window.cv.putText(
+        visualMat,
+        label,
+        new window.cv.Point(Math.floor(marker.x - 20), Math.floor(marker.y - marker.height / 2 - 10)),
+        window.cv.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        color,
         2
       );
-
-      gray.delete();
-      blurred.delete();
-
-      return binary;
-    } catch (error) {
-      gray.delete();
-      blurred.delete();
-      binary.delete();
-      throw error;
-    }
-  }
-
-  /**
-   * 🎯 PASO 2: Detectar 3 marcadores QR (esquinas)
-   * Busca cuadrados negros concéntricos en las esquinas
-   */
-  detectQRMarkers(binaryMat) {
-    const contours = new window.cv.MatVector();
-    const hierarchy = new window.cv.Mat();
-    const markers = [];
-
-    try {
-      window.cv.findContours(
-        binaryMat,
-        contours,
-        hierarchy,
-        window.cv.RETR_TREE,
-        window.cv.CHAIN_APPROX_SIMPLE
-      );
-
-      // Buscar cuadrados (marcadores QR tipo)
-      for (let i = 0; i < contours.size(); i++) {
-        const contour = contours.get(i);
-        const area = window.cv.contourArea(contour);
-
-        // Área de marcadores QR (ajustar según tu PDF)
-        if (area > 150 && area < 800) {
-          const peri = window.cv.arcLength(contour, true);
-          const approx = new window.cv.Mat();
-          window.cv.approxPolyDP(contour, approx, 0.02 * peri, true);
-
-          // Es un cuadrilátero?
-          if (approx.rows === 4) {
-            const rect = window.cv.boundingRect(contour);
-            const aspectRatio = rect.width / rect.height;
-
-            // Es aproximadamente cuadrado?
-            if (aspectRatio > 0.75 && aspectRatio < 1.25) {
-              markers.push({
-                x: rect.x + rect.width / 2,
-                y: rect.y + rect.height / 2,
-                width: rect.width,
-                height: rect.height,
-                area: area
-              });
-            }
-          }
-          approx.delete();
-        }
-        contour.delete();
-      }
-
-      // Ordenar y filtrar para obtener exactamente 3 marcadores
-      // Top-left, Top-right, Bottom-left
-      markers.sort((a, b) => a.y - b.y);
-
-      const result = {
-        topLeft: null,
-        topRight: null,
-        bottomLeft: null
-      };
-
-      if (markers.length >= 3) {
-        // Los 2 primeros son top (ordenar por X)
-        const topMarkers = markers.slice(0, 2).sort((a, b) => a.x - b.x);
-        result.topLeft = topMarkers[0];
-        result.topRight = topMarkers[1];
-
-        // El tercero es bottom-left (menor X de los restantes)
-        const bottomMarkers = markers.slice(2).sort((a, b) => a.x - b.x);
-        result.bottomLeft = bottomMarkers[0];
-      }
-
-      return result;
-
-    } finally {
-      contours.delete();
-      hierarchy.delete();
-    }
-  }
-
-  /**
-   * 🔄 PASO 3: Corregir perspectiva (Warp)
-   * Alinea la imagen usando los 3 marcadores QR
-   */
-  alignImage(mat, markers) {
-    const { topLeft, topRight, bottomLeft } = markers;
-
-    if (!topLeft || !topRight || !bottomLeft) {
-      console.warn('⚠️ Marcadores insuficientes, usando imagen original');
-      return { aligned: mat.clone(), transform: null };
-    }
-
-    try {
-      // Puntos origen (detectados)
-      const srcPoints = window.cv.matFromArray(4, 1, window.cv.CV_32FC2, [
-        topLeft.x, topLeft.y,
-        topRight.x, topRight.y,
-        bottomLeft.x, bottomLeft.y,
-        topRight.x, bottomLeft.y // Inferir bottom-right
-      ]);
-
-      // Puntos destino (A4 @ 192 DPI: 1587x2245px)
-      const dstWidth = 1587;
-      const dstHeight = 2245;
-      const dstPoints = window.cv.matFromArray(4, 1, window.cv.CV_32FC2, [
-        0, 0,
-        dstWidth, 0,
-        0, dstHeight,
-        dstWidth, dstHeight
-      ]);
-
-      // Calcular matriz de transformación
-      const M = window.cv.getPerspectiveTransform(srcPoints, dstPoints);
-      const aligned = new window.cv.Mat();
-      const dsize = new window.cv.Size(dstWidth, dstHeight);
-
-      window.cv.warpPerspective(
-        mat,
-        aligned,
-        M,
-        dsize,
-        window.cv.INTER_LINEAR,
-        window.cv.BORDER_CONSTANT,
-        new window.cv.Scalar(255, 255, 255, 255)
-      );
-
-      srcPoints.delete();
-      dstPoints.delete();
-      M.delete();
-
-      return { aligned, transform: { dstWidth, dstHeight } };
-
-    } catch (error) {
-      console.error('❌ Error en alineación:', error);
-      return { aligned: mat.clone(), transform: null };
-    }
-  }
-
-  /**
-   * 📍 PASO 4: Detectar marcas laterales (filas)
-   * Busca cuadrados pequeños a la izquierda y derecha de las tablas
-   */
-  detectRowMarkers(binaryMat, side = 'left') {
-    const height = binaryMat.rows;
-    const width = binaryMat.cols;
-
-    // Definir ROI para buscar marcas laterales
-    const roiX = side === 'left' ? Math.floor(width * 0.03) : Math.floor(width * 0.88);
-    const roiWidth = Math.floor(width * 0.08);
-    const roiY = Math.floor(height * 0.12); // Después del header
-    const roiHeight = Math.floor(height * 0.80);
-
-    const rect = new window.cv.Rect(roiX, roiY, roiWidth, roiHeight);
-    const roi = binaryMat.roi(rect);
-
-    const contours = new window.cv.MatVector();
-    const hierarchy = new window.cv.Mat();
-    const markers = [];
-
-    try {
-      window.cv.findContours(
-        roi,
-        contours,
-        hierarchy,
-        window.cv.RETR_EXTERNAL,
-        window.cv.CHAIN_APPROX_SIMPLE
-      );
-
-      for (let i = 0; i < contours.size(); i++) {
-        const contour = contours.get(i);
-        const area = window.cv.contourArea(contour);
-
-        // Marcas laterales pequeñas (ajustar según tu PDF)
-        if (area > 20 && area < 200) {
-          const rect = window.cv.boundingRect(contour);
-          const aspectRatio = rect.width / rect.height;
-
-          // Aproximadamente cuadrado
-          if (aspectRatio > 0.6 && aspectRatio < 1.4) {
-            markers.push({
-              x: roiX + rect.x + rect.width / 2,
-              y: roiY + rect.y + rect.height / 2,
-              width: rect.width,
-              height: rect.height
-            });
-          }
-        }
-        contour.delete();
-      }
-
-      // Ordenar por Y (de arriba a abajo)
-      markers.sort((a, b) => a.y - b.y);
-
-      return markers;
-
-    } finally {
-      roi.delete();
-      contours.delete();
-      hierarchy.delete();
-    }
-  }
-
-  /**
-   * 📊 PASO 5: Calcular geometría del grid
-   * Determina posición de cada celda basándose en las marcas laterales
-   */
-  calculateGridGeometry(alignedMat, leftMarkers, rightMarkers) {
-    const width = alignedMat.cols;
-    const height = alignedMat.rows;
-
-    // Configuración de tablas (ajustar según tu PDF)
-    const tableConfig = {
-      left: {
-        startX: Math.floor(width * 0.05),
-        endX: Math.floor(width * 0.48),
-        alternativeWidth: Math.floor(width * 0.05)
-      },
-      right: {
-        startX: Math.floor(width * 0.52),
-        endX: Math.floor(width * 0.95),
-        alternativeWidth: Math.floor(width * 0.05)
-      },
-      cellHeight: 30 // Altura promedio de celda
     };
 
-    const grids = {
-      left: [],
-      right: []
-    };
+    // Verde para TL, Azul para TR, Rojo para BL
+    drawMarker(markers.topLeft, new window.cv.Scalar(0, 255, 0, 255), 'TL');
+    drawMarker(markers.topRight, new window.cv.Scalar(255, 0, 0, 255), 'TR');
+    drawMarker(markers.bottomLeft, new window.cv.Scalar(0, 0, 255, 255), 'BL');
 
-    // Grid izquierdo
-    leftMarkers.forEach((marker, idx) => {
-      const numAlternatives = 5; // Por defecto, ajustar si detectas V/F
-      const alternatives = [];
-
-      for (let i = 0; i < numAlternatives; i++) {
-        alternatives.push({
-          letter: String.fromCharCode(65 + i), // A, B, C, D, E
-          x: tableConfig.left.startX + (i * tableConfig.left.alternativeWidth),
-          y: marker.y,
-          width: tableConfig.left.alternativeWidth,
-          height: tableConfig.cellHeight
-        });
-      }
-
-      grids.left.push({
-        questionNumber: idx + 1,
-        y: marker.y,
-        alternatives: alternatives
-      });
-    });
-
-    // Grid derecho
-    rightMarkers.forEach((marker, idx) => {
-      const numAlternatives = 5;
-      const alternatives = [];
-
-      for (let i = 0; i < numAlternatives; i++) {
-        alternatives.push({
-          letter: String.fromCharCode(65 + i),
-          x: tableConfig.right.startX + (i * tableConfig.right.alternativeWidth),
-          y: marker.y,
-          width: tableConfig.right.alternativeWidth,
-          height: tableConfig.cellHeight
-        });
-      }
-
-      grids.right.push({
-        questionNumber: leftMarkers.length + idx + 1,
-        y: marker.y,
-        alternatives: alternatives
-      });
-    });
-
-    return grids;
-  }
-
-  /**
-   * ✂️ PASO 6: Extraer ROIs (RUT + Tablas)
-   */
-  extractROIs(alignedMat, grids) {
-    const width = alignedMat.cols;
-    const height = alignedMat.rows;
-
-    const rois = {
-      rut: null,
-      tableLeft: null,
-      tableRight: null
-    };
-
-    try {
-      // ROI del RUT (ajustar coordenadas según tu PDF)
-      const rutRect = new window.cv.Rect(
-        Math.floor(width * 0.05),
-        Math.floor(height * 0.06),
-        Math.floor(width * 0.25),
-        Math.floor(height * 0.025)
-      );
-      rois.rut = alignedMat.roi(rutRect);
-
-      // ROI tabla izquierda
-      if (grids.left.length > 0) {
-        const firstY = grids.left[0].y - 20;
-        const lastY = grids.left[grids.left.length - 1].y + 30;
-        const tableLeftRect = new window.cv.Rect(
-          Math.floor(width * 0.05),
-          firstY,
-          Math.floor(width * 0.43),
-          lastY - firstY
-        );
-        rois.tableLeft = alignedMat.roi(tableLeftRect);
-      }
-
-      // ROI tabla derecha
-      if (grids.right.length > 0) {
-        const firstY = grids.right[0].y - 20;
-        const lastY = grids.right[grids.right.length - 1].y + 30;
-        const tableRightRect = new window.cv.Rect(
-          Math.floor(width * 0.52),
-          firstY,
-          Math.floor(width * 0.43),
-          lastY - firstY
-        );
-        rois.tableRight = alignedMat.roi(tableRightRect);
-      }
-
-    } catch (error) {
-      console.error('❌ Error extrayendo ROIs:', error);
-    }
-
-    return rois;
+    return visualMat;
   }
 
   /**
    * 🔍 Pipeline completo de procesamiento
+   * Sigue EXACTAMENTE el flujo del HTML
    */
   async processAnswerSheet(imageData) {
     await this.initialize();
@@ -477,96 +429,180 @@ class VisionService {
     const startTime = performance.now();
 
     const { image } = imageData;
-    let mat = this.imageToMat(image);
+    const srcMat = this.imageToMat(image);
 
     const results = {
       success: false,
-      original: this.matToBase64(mat, 0.75), // Comprimido para storage
-      aligned: null,
+      original: this.matToBase64(srcMat, 0.75),
+      debug: {
+        step1_grayscale: null,
+        step2_blurred: null,
+        step3_binary: null,
+        step4_markersDetected: null,
+        step5_warped: null,
+        step6_gridDetected: null,
+        step7_roiLeft: null,
+        step8_roiRight: null
+      },
       rois: null,
       grids: null,
       metadata: {
-        originalSize: { width: mat.cols, height: mat.rows },
+        originalSize: { width: srcMat.cols, height: srcMat.rows },
         markersFound: 0,
-        leftRowMarkers: 0,
-        rightRowMarkers: 0
+        rowsDetected: 0
       },
       errors: []
     };
 
+    let gray = null;
+    let warpedMat = null;
+    let displayGrid = null;
+
     try {
-      // 1. Preprocesamiento
-      console.log('1️⃣ Preprocesando imagen...');
-      const preprocessed = this.preprocessImage(mat);
-      mat.delete();
-      mat = preprocessed;
+      // PASO 1: Grayscale (para debug)
+      console.log('1️⃣ Convirtiendo a escala de grises...');
+      gray = new window.cv.Mat();
+      window.cv.cvtColor(srcMat, gray, window.cv.COLOR_RGBA2GRAY);
+      results.debug.step1_grayscale = this.matToBase64(gray);
 
-      // 2. Detectar marcadores QR
-      console.log('2️⃣ Detectando marcadores QR...');
-      const qrMarkers = this.detectQRMarkers(mat);
-      const markersCount = [qrMarkers.topLeft, qrMarkers.topRight, qrMarkers.bottomLeft]
-        .filter(m => m !== null).length;
-      results.metadata.markersFound = markersCount;
+      // PASO 2: Detectar 3 marcadores de esquina
+      console.log('2️⃣ Detectando marcadores de esquina...');
+      const markers = this.detectCornerMarkers(srcMat);
 
-      if (markersCount < 3) {
-        results.errors.push('No se encontraron los 3 marcadores QR necesarios');
+      if (!markers) {
+        results.errors.push('No se detectaron 3 marcadores de esquina');
+        return results;
       }
 
-      // 3. Alinear imagen
-      console.log('3️⃣ Corrigiendo perspectiva...');
-      const { aligned, transform } = this.alignImage(mat, qrMarkers);
-      mat.delete();
-      mat = aligned;
-      results.aligned = this.matToBase64(mat, 0.85);
+      results.metadata.markersFound = 3;
 
-      // 4. Detectar marcas laterales
-      console.log('4️⃣ Detectando marcas laterales...');
-      const leftMarkers = this.detectRowMarkers(mat, 'left');
-      const rightMarkers = this.detectRowMarkers(mat, 'right');
-      results.metadata.leftRowMarkers = leftMarkers.length;
-      results.metadata.rightRowMarkers = rightMarkers.length;
+      // Dibujar marcadores
+      const markedMat = this.drawMarkersOnImage(srcMat, markers);
+      results.debug.step4_markersDetected = this.matToBase64(markedMat);
+      markedMat.delete();
 
-      console.log(`   ✓ Marcas izquierda: ${leftMarkers.length}`);
-      console.log(`   ✓ Marcas derecha: ${rightMarkers.length}`);
+      // PASO 3: Warp perspective
+      console.log('3️⃣ Aplicando corrección de perspectiva...');
+      warpedMat = this.warpPerspective(srcMat, markers);
+      results.debug.step5_warped = this.matToBase64(warpedMat);
 
-      if (leftMarkers.length === 0 && rightMarkers.length === 0) {
-        results.errors.push('No se detectaron marcas laterales');
-      }
+      // PASO 4: Detectar grid de respuestas
+      console.log('4️⃣ Detectando grid de respuestas...');
+      const gridData = this.detectAnswerGrid(warpedMat);
+      results.metadata.rowsDetected = gridData.pairs.length;
 
-      // 5. Calcular geometría del grid
-      console.log('5️⃣ Calculando geometría del grid...');
-      const grids = this.calculateGridGeometry(mat, leftMarkers, rightMarkers);
-      results.grids = grids;
+      // PASO 5: Dibujar grid (debug) y extraer ROIs
+      console.log('5️⃣ Generando visualización y ROIs...');
+      displayGrid = warpedMat.clone();
 
-      // 6. Extraer ROIs
-      console.log('6️⃣ Extrayendo ROIs...');
-      const rois = this.extractROIs(mat, grids);
-      results.rois = {
-        rut: rois.rut ? this.matToBase64(rois.rut) : null,
-        tableLeft: rois.tableLeft ? this.matToBase64(rois.tableLeft) : null,
-        tableRight: rois.tableRight ? this.matToBase64(rois.tableRight) : null,
-        // Guardar Mats para procesamiento posterior
-        rutMat: rois.rut,
-        tableLeftMat: rois.tableLeft,
-        tableRightMat: rois.tableRight
+      const NUM_COLS = 4; // A, B, C, D
+      const cellPixW = 3.9 * gridData.globalAvgW;
+      const cellPixH = 1.3 * gridData.globalAvgW;
+
+      let boundsT1 = { minX: Infinity, minY: Infinity, maxX: 0, maxY: 0 };
+      let boundsT2 = { minX: Infinity, minY: Infinity, maxX: 0, maxY: 0 };
+
+      const updateBounds = (bounds, x, y, cw, ch) => {
+        bounds.minX = Math.min(bounds.minX, x - cw / 2);
+        bounds.maxX = Math.max(bounds.maxX, x + cw / 2);
+        bounds.minY = Math.min(bounds.minY, y - ch / 2);
+        bounds.maxY = Math.max(bounds.maxY, y + ch / 2);
       };
+
+      // Dibujar celdas sobre cada fila
+      gridData.pairs.forEach(pair => {
+        const yStart = pair.L.y;
+        const yEnd = pair.R.y;
+
+        // Tabla 1 (Izquierda)
+        let cursorX = gridData.dimensions.midX;
+        for (let j = 0; j < NUM_COLS; j++) {
+          const cx = cursorX - cellPixW / 2;
+          const currentY = yStart + (yEnd - yStart) * ((cx - gridData.avgAnchorL) / (gridData.avgAnchorR - gridData.avgAnchorL));
+
+          const pt1 = new window.cv.Point(cx - cellPixW / 2, currentY - cellPixH / 2);
+          const pt2 = new window.cv.Point(cx + cellPixW / 2, currentY + cellPixH / 2);
+          window.cv.rectangle(displayGrid, pt1, pt2, [0, 255, 0, 150], 1);
+
+          updateBounds(boundsT1, cx, currentY, cellPixW, cellPixH);
+          cursorX -= cellPixW;
+        }
+
+        // Tabla 2 (Derecha)
+        const jump = 1.7 * gridData.globalAvgW;
+        cursorX = gridData.dimensions.midX + jump;
+        for (let j = 0; j < NUM_COLS; j++) {
+          const cx = cursorX + cellPixW / 2;
+          const currentY = yStart + (yEnd - yStart) * ((cx - gridData.avgAnchorL) / (gridData.avgAnchorR - gridData.avgAnchorL));
+
+          const pt1 = new window.cv.Point(cx - cellPixW / 2, currentY - cellPixH / 2);
+          const pt2 = new window.cv.Point(cx + cellPixW / 2, currentY + cellPixH / 2);
+          window.cv.rectangle(displayGrid, pt1, pt2, [0, 255, 0, 150], 1);
+
+          updateBounds(boundsT2, cx, currentY, cellPixW, cellPixH);
+          cursorX += cellPixW;
+        }
+      });
+
+      results.debug.step6_gridDetected = this.matToBase64(displayGrid);
+
+      // PASO 6: Extraer ROIs (recortes) con padding
+      const extractROI = (bounds, warpedMat) => {
+        if (bounds.minX === Infinity || bounds.maxX === 0) return null;
+
+        const padding = 10;
+        const rx = Math.max(0, Math.floor(bounds.minX - padding));
+        const ry = Math.max(0, Math.floor(bounds.minY - padding));
+        const rw = Math.min(warpedMat.cols - rx, Math.ceil((bounds.maxX - bounds.minX) + padding * 2));
+        const rh = Math.min(warpedMat.rows - ry, Math.ceil((bounds.maxY - bounds.minY) + padding * 2));
+
+        if (rw > 0 && rh > 0) {
+          const rect = new window.cv.Rect(rx, ry, rw, rh);
+          return warpedMat.roi(rect);
+        }
+        return null;
+      };
+
+      const roiLeft = extractROI(boundsT1, warpedMat);
+      const roiRight = extractROI(boundsT2, warpedMat);
+
+      // Guardar ROIs como imágenes base64 para debug
+      if (roiLeft) {
+        results.debug.step7_roiLeft = this.matToBase64(roiLeft);
+        roiLeft.delete(); // Limpiar después de convertir
+      }
+      if (roiRight) {
+        results.debug.step8_roiRight = this.matToBase64(roiRight);
+        roiRight.delete(); // Limpiar después de convertir
+      }
+
+      // Guardar ROIs para procesamiento posterior (solo base64, sin Mats)
+      results.rois = {
+        tableLeft: results.debug.step7_roiLeft,
+        tableRight: results.debug.step8_roiRight
+      };
+
+      results.grids = gridData;
 
       const endTime = performance.now();
       results.metadata.processingTime = endTime - startTime;
       results.success = results.errors.length === 0;
 
-      console.log(`✅ Procesamiento OpenCV completado en ${(endTime - startTime).toFixed(2)}ms`);
+      console.log(`✅ Procesamiento completado en ${(endTime - startTime).toFixed(2)}ms`);
+      console.log(`   📊 ${results.metadata.rowsDetected} filas detectadas`);
 
       return results;
 
     } catch (error) {
-      console.error('❌ Error en pipeline de visión:', error);
+      console.error('❌ Error en pipeline:', error);
       results.errors.push(error.message);
       return results;
     } finally {
-      if (mat && !mat.isDeleted()) {
-        mat.delete();
-      }
+      // Cleanup
+      if (srcMat && !srcMat.isDeleted()) srcMat.delete();
+      if (gray && !gray.isDeleted()) gray.delete();
+      if (warpedMat && !warpedMat.isDeleted()) warpedMat.delete();
+      if (displayGrid && !displayGrid.isDeleted()) displayGrid.delete();
     }
   }
 
@@ -576,7 +612,7 @@ class VisionService {
   cleanup(rois) {
     if (!rois) return;
 
-    const matsToClean = ['rutMat', 'tableLeftMat', 'tableRightMat'];
+    const matsToClean = ['tableLeftMat', 'tableRightMat'];
     matsToClean.forEach(key => {
       if (rois[key] && !rois[key].isDeleted()) {
         rois[key].delete();

@@ -109,6 +109,10 @@
  * @property {boolean} needsReview - Si requiere revisión manual
  * @property {string[]} reviewReasons - Razones por las que necesita revisión
  * @property {string} [thumbnail] - Imagen thumbnail en base64 (para preview)
+ * @property {string} [alignedImage] - Imagen alineada para vista previa
+ * @property {string} [rutImage] - Imagen de la región de RUT
+ * @property {string} [tableLeftImage] - Imagen de la tabla izquierda
+ * @property {string} [tableRightImage] - Imagen de la tabla derecha
  * @property {number} processingTime - Tiempo de procesamiento en ms
  * @property {Date} correctedAt - Fecha de corrección
  */

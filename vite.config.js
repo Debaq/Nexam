@@ -60,4 +60,38 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  server: {
+    headers: {
+      // Headers necesarios para SharedArrayBuffer y WASM threading
+      // Comentados para desarrollo sin crossOriginIsolated
+      // 'Cross-Origin-Embedder-Policy': 'require-corp',
+      // 'Cross-Origin-Opener-Policy': 'same-origin',
+    },
+    proxy: {
+      '/models': {
+        target: 'https://www.tmeduca.org',
+        changeOrigin: true,
+      }
+    }
+  },
+  optimizeDeps: {
+    exclude: ['onnxruntime-web'], // Evitar que Vite optimice ONNX Runtime
+    esbuildOptions: {
+      target: 'esnext' // Requerido para top-level await y otras features modernas
+    }
+  },
+  build: {
+    target: 'esnext', // Build target para producción
+    rollupOptions: {
+      output: {
+        // Asegurar que archivos WASM se copien correctamente
+        assetFileNames: (assetInfo) => {
+          if (assetInfo.name.endsWith('.wasm')) {
+            return 'assets/[name][extname]';
+          }
+          return 'assets/[name]-[hash][extname]';
+        }
+      }
+    }
+  }
 })

@@ -1,0 +1,14 @@
+{
+  "feedback": {
+    "title": "Comentarios y Sugerencias",
+    "titleLabel": "Título",
+    "emailLabel": "Correo Electrónico (opcional)",
+    "descriptionLabel": "Descripción",
+    "cancel": "Cancelar",
+    "submit": "Enviar",
+    "submitting": "Enviando...",
+    "successMessage": "¡Comentario enviado exitosamente!",
+    "errorMessage": "Error al enviar el comentario. Por favor, inténtalo más tarde.",
+    "requiredFieldsMessage": "Por favor, completa el título y la descripción"
+  }
+}

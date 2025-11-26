@@ -1,0 +1,12 @@
+{
+  "gradeScale": {
+    "title": "Generador de Escala de Notas",
+    "statistics": "Estadísticas",
+    "totalRows": "Total de filas",
+    "passingScoreThreshold": "Puntaje de aprobación",
+    "passingPercentageThreshold": "Porcentaje de aprobación",
+    "errorParameters": "Error en los parámetros:",
+    "noResults": "No se encontraron resultados con los filtros aplicados",
+    "adjustParameters": "Ajusta los parámetros para generar la escala"
+  }
+}

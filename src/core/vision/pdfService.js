@@ -21,9 +21,12 @@ class PDFService {
 
     this.initPromise = (async () => {
       // Cargar pdf.js desde CDN
-      const pdfjsLib = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/+esm');
+      const pdfjsLibModule = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/+esm');
 
-      // Configurar worker
+      // Acceder al objeto pdfjsLib correctamente
+      const pdfjsLib = pdfjsLibModule.default || pdfjsLibModule;
+
+      // Configurar pdf.js con el CDN del worker
       pdfjsLib.GlobalWorkerOptions.workerSrc =
         'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
 

@@ -1,0 +1,30 @@
+{
+  "settings": {
+    "title": "Configuración",
+    "install": "Instalar Aplicación",
+    "visualTheme": "Tema Visual",
+    "themeLabel": "Tema de color",
+    "visualMode": "Modo Visual",
+    "darkModeLabel": "Preferencia de modo",
+    "light": "Claro",
+    "dark": "Oscuro",
+    "language": "Idioma",
+    "languageLabel": "Idioma de la aplicación",
+    "spanish": "Español",
+    "autoSave": "Autoguardado",
+    "notifications": "Notificaciones",
+    "autoBackup": "Backup Automático",
+    "reminder": "Recordatorio Importante",
+    "aiModel": "Modelo de IA",
+    "yoloModelUrl": "URL del modelo YOLO",
+    "features": {
+      "title": "Funcionalidades Futuras",
+      "multilanguage": "Múltiples idiomas (Inglés, Portugués)",
+      "pushNotifications": "Notificaciones push personalizadas",
+      "sync": "Sincronización en línea",
+      "accessibility": "Accesibilidad avanzada",
+      "privacy": "Configuración de privacidad",
+      "contrast": "Modo de alto contraste"
+    }
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "questions": {
+    "loading": "Cargando preguntas...",
+    "bankTitle": "Banco de Preguntas",
+    "newQuestion": "Nueva Pregunta",
+    "editQuestion": "Editar Pregunta",
+    "categories": {
+      "new": "+ Crear nueva categoría",
+      "select": "Seleccionar categoría",
+      "all": "Todas las categorías",
+      "existing": "Categorías Existentes",
+      "manage": "Administrar Categorías"
+    },
+    "types": {
+      "multiple": "Selección Múltiple",
+      "boolean": "Verdadero/Falso",
+      "development": "Desarrollo",
+      "matching": "Items y Combinaciones",
+      "all": "Todos los tipos",
+      "select": "Tipo de Pregunta"
+    },
+    "difficulties": {
+      "all": "Todas las dificultades",
+      "easy": "Fácil",
+      "medium": "Media",
+      "hard": "Difícil"
+    },
+    "form": {
+      "title": {
+        "create": "Nueva Pregunta",
+        "edit": "Editar Pregunta"
+      },
+      "questionField": "Pregunta *",
+      "questionType": "Tipo de pregunta",
+      "changeNote": "El tipo de pregunta no se puede cambiar después de creada.",
+      "alternatives": "Alternativas y Feedback",
+      "items": "Items",
+      "combinations": "Combinaciones",
+      "categoryField": "Categoría *",
+      "tagsField": "Etiquetas (Tags)",
+      "readOnlyNote": "No se puede cambiar en preguntas existentes",
+      "includeItems": "Incluir items:",
+      "difficulty": "Dificultad"
+    },
+    "import": {
+      "title": "Importar desde GIFT",
+      "format": "Formato GIFT:",
+      "formatDescription": "Archivo de texto con preguntas en formato Moodle GIFT.",
+      "fileField": "Archivo GIFT *",
+      "categoryField": "Categoría para las preguntas *"
+    }
+  }
+}

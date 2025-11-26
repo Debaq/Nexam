@@ -2,10 +2,11 @@
  * 🤖 YOLO Service - Detección de marcas con YOLOv11n
  *
  * Utiliza ONNX Runtime Web para ejecutar el modelo en el navegador
- * Descarga el modelo desde URL remota (permite actualizaciones sin rebuild)
+ * Cachea el modelo en IndexedDB para evitar descargas repetidas
  */
 
 import * as ort from 'onnxruntime-web';
+import { db } from '@/core/storage/db';
 
 class YOLOService {
   constructor() {
@@ -15,7 +16,7 @@ class YOLOService {
 
     // Cargar URL del modelo desde localStorage o usar predeterminada
     const storedURL = localStorage.getItem('nexam_yolo_model_url');
-    const defaultURL = 'http://tmeduca.org/models/nexam_v1.onnx';
+    const defaultURL = '/models/nexam_v1.onnx';
 
     this.modelConfig = {
       // URL del modelo (configurable desde Settings)
@@ -32,10 +33,18 @@ class YOLOService {
   }
 
   /**
-   * Verifica si el modelo está disponible
+   * Verifica si el modelo está disponible (en caché o remoto)
    */
   async checkModelAvailability() {
     try {
+      // Primero verificar si está en caché
+      const cachedModel = await db.modelCache.get(this.modelConfig.modelURL);
+      if (cachedModel && cachedModel.data) {
+        this.modelAvailable = true;
+        return true;
+      }
+
+      // Si no está en caché, verificar disponibilidad remota
       const response = await fetch(this.modelConfig.modelURL, { method: 'HEAD' });
       this.modelAvailable = response.ok;
       return this.modelAvailable;
@@ -44,6 +53,90 @@ class YOLOService {
       this.modelAvailable = false;
       return false;
     }
+  }
+
+  /**
+   * Obtiene el modelo desde caché
+   */
+  async getModelFromCache() {
+    try {
+      const cachedModel = await db.modelCache.get(this.modelConfig.modelURL);
+      if (cachedModel && cachedModel.data) {
+        console.log('✅ Modelo encontrado en caché');
+        return cachedModel.data;
+      }
+      return null;
+    } catch (error) {
+      console.warn('⚠️ Error al obtener modelo de caché:', error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Guarda el modelo en caché
+   */
+  async saveModelToCache(modelBuffer) {
+    try {
+      await db.modelCache.put({
+        url: this.modelConfig.modelURL,
+        data: modelBuffer,
+        downloadedAt: new Date().toISOString(),
+        size: modelBuffer.byteLength
+      });
+      console.log('✅ Modelo guardado en caché');
+      return true;
+    } catch (error) {
+      console.error('❌ Error al guardar modelo en caché:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Elimina el modelo de la caché
+   */
+  async clearModelCache(url = null) {
+    try {
+      const urlToDelete = url || this.modelConfig.modelURL;
+      await db.modelCache.delete(urlToDelete);
+      console.log('✅ Modelo eliminado de caché');
+      return true;
+    } catch (error) {
+      console.error('❌ Error al eliminar modelo de caché:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Obtiene información de la caché
+   */
+  async getCacheInfo() {
+    try {
+      const cachedModel = await db.modelCache.get(this.modelConfig.modelURL);
+      if (cachedModel) {
+        return {
+          cached: true,
+          url: cachedModel.url,
+          downloadedAt: cachedModel.downloadedAt,
+          size: cachedModel.size,
+          sizeFormatted: this.formatBytes(cachedModel.size)
+        };
+      }
+      return { cached: false };
+    } catch (error) {
+      console.error('❌ Error al obtener info de caché:', error);
+      return { cached: false, error: error.message };
+    }
+  }
+
+  /**
+   * Formatea bytes a formato legible
+   */
+  formatBytes(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
   }
 
   /**
@@ -103,25 +196,41 @@ class YOLOService {
 
     this.initPromise = (async () => {
       try {
-        // Verificar disponibilidad del modelo
-        const isAvailable = await this.checkModelAvailability();
-
-        if (!isAvailable) {
-          throw new Error('MODELO_NO_DISPONIBLE');
-        }
-
         // Configurar ONNX Runtime
-        ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.16.0/dist/';
-        ort.env.wasm.numThreads = 4;
+        // Usar la versión correcta de WASM files (debe coincidir con package.json)
+        ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.2/dist/';
 
-        // Descargar modelo
-        const modelBuffer = await this.downloadModel(onProgress);
+        // Configuración para entorno de desarrollo sin crossOriginIsolated
+        ort.env.wasm.numThreads = 1; // Solo 1 hilo (multi-threading requiere crossOriginIsolated)
+        ort.env.wasm.simd = false;   // Deshabilitar SIMD en dev (requiere crossOriginIsolated)
+        ort.env.wasm.proxy = false;  // Sin proxy en dev
+
+        // Intentar cargar desde caché primero
+        let modelBuffer = await this.getModelFromCache();
+
+        if (modelBuffer) {
+          console.log('📦 Usando modelo desde caché');
+        } else {
+          // Si no está en caché, verificar disponibilidad y descargar
+          console.log('📥 Modelo no encontrado en caché, descargando...');
+
+          const isAvailable = await this.checkModelAvailability();
+          if (!isAvailable) {
+            throw new Error('MODELO_NO_DISPONIBLE');
+          }
+
+          // Descargar modelo
+          modelBuffer = await this.downloadModel(onProgress);
+
+          // Guardar en caché para futuros usos
+          await this.saveModelToCache(modelBuffer);
+        }
 
         // Crear sesión de inferencia
         console.log('🔧 Inicializando sesión ONNX...');
         this.session = await ort.InferenceSession.create(modelBuffer, {
-          executionProviders: ['wasm'],
-          graphOptimizationLevel: 'all'
+          executionProviders: ['wasm'], // Usar solo WASM (cpu también podría funcionar)
+          graphOptimizationLevel: 'basic' // Cambiar de 'all' a 'basic' para mejor compatibilidad en dev
         });
 
         console.log('✅ YOLO Service inicializado');
@@ -398,6 +507,42 @@ class YOLOService {
     }
     this.modelConfig.modelURL = url;
     return true;
+  }
+
+  /**
+   * Descarga y almacena el modelo manualmente (sin inicializar el servicio)
+   * Útil para pre-cargar el modelo desde la configuración
+   */
+  async downloadAndCache(onProgress = null) {
+    try {
+      console.log('📥 Descargando modelo para almacenar en caché...');
+
+      // Verificar disponibilidad
+      const isAvailable = await this.checkModelAvailability();
+      if (!isAvailable) {
+        throw new Error('MODELO_NO_DISPONIBLE');
+      }
+
+      // Descargar modelo
+      const modelBuffer = await this.downloadModel(onProgress);
+
+      // Guardar en caché
+      await this.saveModelToCache(modelBuffer);
+
+      console.log('✅ Modelo descargado y almacenado en caché');
+      return {
+        success: true,
+        size: modelBuffer.byteLength,
+        sizeFormatted: this.formatBytes(modelBuffer.byteLength)
+      };
+
+    } catch (error) {
+      console.error('❌ Error al descargar y almacenar modelo:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
   }
 }
 

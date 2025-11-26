@@ -1,0 +1,12 @@
+{
+  "analytics": {
+    "title": "Reportes y Análisis",
+    "features": [
+      "Estadísticas por evaluación",
+      "Análisis por pregunta (dificultad real)",
+      "Rendimiento de estudiantes",
+      "Gráficos y visualizaciones",
+      "Export de reportes en PDF/Excel"
+    ]
+  }
+}

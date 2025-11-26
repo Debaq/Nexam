@@ -622,6 +622,63 @@ export const examService = {
   },
 
   /**
+   * Regenera gabaritos para exámenes finalizados sin gabarito (migración)
+   * Útil para exámenes creados antes de implementar la generación de gabaritos
+   * @param {string} examId - ID del examen a migrar
+   * @returns {Promise<Object>} Examen actualizado con gabaritos
+   */
+  async regenerateAnswerKeys(examId) {
+    const exam = await db.exams.get(examId);
+    if (!exam) throw new Error('Examen no encontrado');
+
+    if (exam.status !== 'finalized') {
+      throw new Error('Solo se pueden regenerar gabaritos en exámenes finalizados');
+    }
+
+    if (!exam.finalizedVersions) {
+      throw new Error('El examen no tiene versiones finalizadas');
+    }
+
+    // Verificar si ya tiene gabaritos
+    if (exam.finalizedVersions.type === 'uniform' && exam.finalizedVersions.answerKey) {
+      console.log('El examen uniforme ya tiene gabarito');
+      return exam;
+    }
+
+    if (exam.finalizedVersions.type === 'differentiated' && exam.finalizedVersions.answerKeys) {
+      console.log('El examen diferenciado ya tiene gabaritos');
+      return exam;
+    }
+
+    // Regenerar gabaritos según el tipo
+    if (exam.finalizedVersions.type === 'uniform') {
+      const questions = exam.finalizedVersions.version.questions;
+      const answerKey = this._generateAnswerKey(questions);
+
+      await db.exams.update(examId, {
+        'finalizedVersions.answerKey': answerKey
+      });
+
+      console.log(`Gabarito regenerado para examen uniforme ${exam.title}`);
+    } else if (exam.finalizedVersions.type === 'differentiated') {
+      const answerKeys = {};
+
+      Object.entries(exam.finalizedVersions.versions).forEach(([studentId, versionData]) => {
+        const answerKey = this._generateAnswerKey(versionData.questions);
+        answerKeys[studentId] = answerKey;
+      });
+
+      await db.exams.update(examId, {
+        'finalizedVersions.answerKeys': answerKeys
+      });
+
+      console.log(`Gabaritos regenerados para ${Object.keys(answerKeys).length} estudiantes en examen ${exam.title}`);
+    }
+
+    return await db.exams.get(examId);
+  },
+
+  /**
    * Copiar examen (especialmente útil para exámenes finalizados)
    * Crea un nuevo examen editable a partir de uno existente
    * - Si las preguntas existen en el banco, usa las referencias actualizadas

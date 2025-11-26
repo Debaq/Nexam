@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/sha
 import { Label } from '@/shared/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/components/ui/select';
 import { Switch } from '@/shared/components/ui/switch';
-import { AlertTriangle, Download, Monitor, Moon, Sun, Palette, Languages, Smartphone, Brain } from 'lucide-react';
+import { AlertTriangle, Download, Monitor, Moon, Sun, Palette, Languages, Smartphone, Brain, Settings } from 'lucide-react';
 import { BackupManager } from '@/core/backup/BackupManager';
 import { useTheme } from '@/core/theme/ThemeProvider';
 import yoloService from '@/core/vision/yoloService';
@@ -53,8 +53,32 @@ export const SettingsPage = () => {
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [autoBackup, setAutoBackup] = useState(true);
   const [autoSave, setAutoSave] = useState(true);
+  const [yoloModelURL, setYoloModelURL] = useState(() => {
+    // Cargar la URL guardada o usar la predeterminada
+    return localStorage.getItem('nexam_yolo_model_url') || '/models/nexam_v1.onnx';
+  });
+  const [yoloModelURLInput, setYoloModelURLInput] = useState(() => {
+    // Cargar la URL guardada o usar la predeterminada
+    return localStorage.getItem('nexam_yolo_model_url') || '/models/nexam_v1.onnx';
+  });
+  const [yoloModelStatus, setYoloModelStatus] = useState('unknown');
+  const [yoloModelMessage, setYoloModelMessage] = useState('');
+  const [isChecking, setIsChecking] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [cacheInfo, setCacheInfo] = useState({ cached: false });
+
   const { isPWAInstalled, installPWA, canInstall } = usePWAInstall();
   const { theme, setTheme, darkMode, setDarkMode } = useTheme();
+
+  // Cargar información de caché al montar
+  useEffect(() => {
+    const loadCacheInfo = async () => {
+      const info = await yoloService.getCacheInfo();
+      setCacheInfo(info);
+    };
+    loadCacheInfo();
+  }, []);
 
   // Temas disponibles
   const themes = [
@@ -74,6 +98,242 @@ export const SettingsPage = () => {
     { value: 'light', label: 'Claro' },
     { value: 'dark', label: 'Oscuro' }
   ];
+
+  // Función para guardar la URL del modelo YOLO
+  const handleSaveYoloModelURL = () => {
+    // Validar que la URL sea válida
+    try {
+      new URL(yoloModelURLInput);
+      localStorage.setItem('nexam_yolo_model_url', yoloModelURLInput);
+      setYoloModelURL(yoloModelURLInput);
+      setYoloModelMessage('URL del modelo actualizada correctamente');
+      setYoloModelStatus('success');
+    } catch (error) {
+      setYoloModelMessage('URL inválida. Por favor ingrese una URL válida (debe incluir protocolo, como http:// o https://)');
+      setYoloModelStatus('error');
+    }
+  };
+
+  // Función para verificar si el modelo está disponible
+  const handleCheckModel = async () => {
+    setIsChecking(true);
+    setYoloModelMessage('Verificando disponibilidad del modelo...');
+
+    try {
+      // Usar el servicio YOLO directamente para verificar la disponibilidad
+      // Temporalmente cambiar la URL para la verificación
+      const originalURL = yoloService.modelConfig && yoloService.modelConfig.modelURL ? yoloService.modelConfig.modelURL : null;
+
+      // Verificar disponibilidad usando el método del servicio YOLO
+      try {
+        // Verificar si podemos cambiar la URL temporalmente
+        if (yoloService.setModelURL && typeof yoloService.setModelURL === 'function') {
+          // Guardar la URL original antes de cambiarla
+          const currentURL = yoloService.modelConfig && yoloService.modelConfig.modelURL ? yoloService.modelConfig.modelURL : null;
+
+          // Intentar cambiar la URL temporalmente
+          const canSetURL = yoloService.setModelURL(yoloModelURLInput);
+
+          if (canSetURL) {
+            // Si se pudo cambiar la URL, verificar disponibilidad
+            const isAvailable = await yoloService.checkModelAvailability();
+
+            if (isAvailable) {
+              setYoloModelStatus('success');
+              setYoloModelMessage('Modelo disponible y accesible');
+            } else {
+              setYoloModelStatus('error');
+              setYoloModelMessage('Modelo no disponible');
+            }
+
+            // Restaurar la URL original
+            if (currentURL) {
+              yoloService.setModelURL(currentURL);
+            }
+          } else {
+            // Si no se puede cambiar la URL directamente, intentar verificar con fetch
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 segundos timeout
+
+            try {
+              const response = await fetch(yoloModelURLInput, {
+                method: 'HEAD',
+                mode: 'cors',
+                signal: controller.signal
+              });
+
+              if (response.ok) {
+                setYoloModelStatus('success');
+                setYoloModelMessage('Modelo disponible (verificación básica exitosa)');
+              } else {
+                setYoloModelStatus('error');
+                setYoloModelMessage(`Modelo no accesible (HTTP ${response.status})`);
+              }
+            } catch (fetchError) {
+              if (fetchError.name === 'AbortError') {
+                setYoloModelStatus('error');
+                setYoloModelMessage('Tiempo de espera agotado verificando modelo');
+              } else {
+                // Si es un error de CORS, informar que puede ser normal
+                setYoloModelStatus('info');
+                setYoloModelMessage('La disponibilidad no se puede verificar completamente por restricciones CORS, pero la URL parece válida. El modelo se verificará al inicializar el servicio.');
+              }
+            } finally {
+              clearTimeout(timeoutId);
+            }
+          }
+        } else {
+          // Si no existe la función setModelURL, usar fetch directamente
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 segundos timeout
+
+          try {
+            const response = await fetch(yoloModelURLInput, {
+              method: 'HEAD',
+              mode: 'cors',
+              signal: controller.signal
+            });
+
+            if (response.ok) {
+              setYoloModelStatus('success');
+              setYoloModelMessage('Modelo disponible (verificación básica exitosa)');
+            } else {
+              setYoloModelStatus('error');
+              setYoloModelMessage(`Modelo no accesible (HTTP ${response.status})`);
+            }
+          } catch (fetchError) {
+            if (fetchError.name === 'AbortError') {
+              setYoloModelStatus('error');
+              setYoloModelMessage('Tiempo de espera agotado verificando modelo');
+            } else {
+              // Si es un error de CORS, informar que puede ser normal
+              setYoloModelStatus('info');
+              setYoloModelMessage('La disponibilidad no se puede verificar completamente por restricciones CORS, pero la URL parece válida. El modelo se verificará al inicializar el servicio.');
+            }
+          } finally {
+            clearTimeout(timeoutId);
+          }
+        }
+      } catch (serviceError) {
+        // Si hay un error con el servicio YOLO, intentar con fetch
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 segundos timeout
+
+        try {
+          const response = await fetch(yoloModelURLInput, {
+            method: 'HEAD',
+            mode: 'cors',
+            signal: controller.signal
+          });
+
+          if (response.ok) {
+            setYoloModelStatus('success');
+            setYoloModelMessage('Modelo disponible (verificación básica exitosa)');
+          } else {
+            setYoloModelStatus('error');
+            setYoloModelMessage(`Modelo no accesible (HTTP ${response.status})`);
+          }
+        } catch (fetchError) {
+          if (fetchError.name === 'AbortError') {
+            setYoloModelStatus('error');
+            setYoloModelMessage('Tiempo de espera agotado verificando modelo');
+          } else {
+            // Si es un error de CORS, informar que puede ser normal
+            setYoloModelStatus('info');
+            setYoloModelMessage('La disponibilidad no se puede verificar completamente por restricciones CORS, pero la URL parece válida. El modelo se verificará al inicializar el servicio.');
+          }
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      }
+    } catch (error) {
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        setYoloModelStatus('info');
+        setYoloModelMessage('La disponibilidad no se puede verificar completamente por restricciones CORS, pero la URL parece válida. El modelo se verificará al inicializar el servicio.');
+      } else {
+        setYoloModelStatus('error');
+        setYoloModelMessage(`Error verificando modelo: ${error.message}`);
+      }
+    } finally {
+      setIsChecking(false);
+    }
+  };
+
+  // Función para restaurar la URL predeterminada
+  const handleResetToDefault = () => {
+    const defaultURL = '/models/nexam_v1.onnx';
+    setYoloModelURLInput(defaultURL);
+    localStorage.setItem('nexam_yolo_model_url', defaultURL);
+    setYoloModelURL(defaultURL);
+    setYoloModelMessage('URL restablecida al valor predeterminado');
+    setYoloModelStatus('info');
+  };
+
+  // Función para descargar y almacenar el modelo
+  const handleDownloadAndCache = async () => {
+    setIsDownloading(true);
+    setDownloadProgress(0);
+    setYoloModelMessage('Descargando modelo...');
+    setYoloModelStatus('info');
+
+    try {
+      // Actualizar URL si cambió
+      if (yoloModelURLInput !== yoloModelURL) {
+        localStorage.setItem('nexam_yolo_model_url', yoloModelURLInput);
+        setYoloModelURL(yoloModelURLInput);
+        // Actualizar la URL en el servicio
+        yoloService.modelConfig.modelURL = yoloModelURLInput;
+      }
+
+      // Descargar y cachear con progreso
+      const result = await yoloService.downloadAndCache((progress) => {
+        setDownloadProgress(progress);
+        setYoloModelMessage(`Descargando modelo... ${Math.round(progress)}%`);
+      });
+
+      if (result.success) {
+        setYoloModelStatus('success');
+        setYoloModelMessage(`Modelo descargado y almacenado exitosamente (${result.sizeFormatted})`);
+
+        // Actualizar información de caché
+        const info = await yoloService.getCacheInfo();
+        setCacheInfo(info);
+      } else {
+        setYoloModelStatus('error');
+        setYoloModelMessage(`Error al descargar modelo: ${result.error}`);
+      }
+    } catch (error) {
+      setYoloModelStatus('error');
+      setYoloModelMessage(`Error al descargar modelo: ${error.message}`);
+    } finally {
+      setIsDownloading(false);
+      setDownloadProgress(0);
+    }
+  };
+
+  // Función para eliminar el modelo de la caché
+  const handleClearCache = async () => {
+    try {
+      setYoloModelMessage('Eliminando modelo de la caché...');
+      setYoloModelStatus('info');
+
+      const success = await yoloService.clearModelCache();
+
+      if (success) {
+        setYoloModelStatus('success');
+        setYoloModelMessage('Modelo eliminado de la caché exitosamente');
+
+        // Actualizar información de caché
+        setCacheInfo({ cached: false });
+      } else {
+        setYoloModelStatus('error');
+        setYoloModelMessage('Error al eliminar modelo de la caché');
+      }
+    } catch (error) {
+      setYoloModelStatus('error');
+      setYoloModelMessage(`Error al eliminar modelo: ${error.message}`);
+    }
+  };
 
   return (
     <div className="p-8 max-w-4xl mx-auto space-y-6">
@@ -362,6 +622,118 @@ export const SettingsPage = () => {
 
       {/* Información de backup */}
       <BackupManager />
+
+      {/* Configuración del modelo YOLO */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <Brain className="w-5 h-5 text-primary" />
+            <div>
+              <CardTitle>Modelo de IA</CardTitle>
+              <CardDescription>
+                Configura la URL del modelo YOLO para detección de marcas
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="yolo-model-url">URL del modelo YOLO</Label>
+              <div className="flex gap-2">
+                <input
+                  id="yolo-model-url"
+                  type="url"
+                  value={yoloModelURLInput}
+                  onChange={(e) => setYoloModelURLInput(e.target.value)}
+                  placeholder="/models/nexam_v1.onnx"
+                  className="flex-1 px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                />
+                <Button
+                  onClick={handleSaveYoloModelURL}
+                  disabled={yoloModelURLInput === yoloModelURL}
+                >
+                  Guardar
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                onClick={handleCheckModel}
+                variant="outline"
+                disabled={isChecking || isDownloading}
+              >
+                {isChecking ? 'Verificando...' : 'Verificar modelo'}
+              </Button>
+              <Button
+                onClick={handleResetToDefault}
+                variant="secondary"
+                disabled={isDownloading}
+              >
+                Valor predeterminado
+              </Button>
+              <Button
+                onClick={handleDownloadAndCache}
+                variant="default"
+                disabled={isDownloading || isChecking}
+                className="col-span-2"
+              >
+                {isDownloading ? `Descargando... ${Math.round(downloadProgress)}%` : 'Descargar y almacenar'}
+              </Button>
+              {cacheInfo.cached && (
+                <Button
+                  onClick={handleClearCache}
+                  variant="destructive"
+                  disabled={isDownloading || isChecking}
+                  className="col-span-2"
+                >
+                  Eliminar de caché
+                </Button>
+              )}
+            </div>
+
+            {yoloModelMessage && (
+              <div className={`p-3 rounded-md ${
+                yoloModelStatus === 'success' ? 'bg-green-50 border border-green-200 text-green-800' :
+                yoloModelStatus === 'error' ? 'bg-red-50 border border-red-200 text-red-800' :
+                yoloModelStatus === 'info' ? 'bg-blue-50 border border-blue-200 text-blue-800' :
+                'bg-gray-50 border border-gray-200 text-gray-800'
+              }`}>
+                <div className="flex items-start gap-2">
+                  <span className="mt-0.5">
+                    {yoloModelStatus === 'success' && '✅'}
+                    {yoloModelStatus === 'error' && '❌'}
+                    {yoloModelStatus === 'info' && 'ℹ️'}
+                  </span>
+                  <span>{yoloModelMessage}</span>
+                </div>
+              </div>
+            )}
+
+            <div className="text-sm text-muted-foreground space-y-2">
+              <div>
+                <p><strong>URL actual:</strong> {yoloModelURL}</p>
+              </div>
+              <div>
+                <p><strong>Estado de caché:</strong> {cacheInfo.cached ? '✅ Modelo en caché' : '❌ Modelo no almacenado'}</p>
+                {cacheInfo.cached && (
+                  <div className="mt-1 pl-4 space-y-1">
+                    <p>• Tamaño: {cacheInfo.sizeFormatted}</p>
+                    <p>• Descargado: {new Date(cacheInfo.downloadedAt).toLocaleString('es-CL')}</p>
+                  </div>
+                )}
+              </div>
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                <p className="text-blue-800">
+                  <strong>💡 Consejo:</strong> Si el modelo está en caché, no se descargará nuevamente en cada actualización de la página.
+                  Usa "Descargar y almacenar" para actualizar el modelo o descargarlo por primera vez.
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Funcionalidades futuras */}
       <Card>

@@ -1,0 +1,36 @@
+{
+  "exams": {
+    "title": "Evaluaciones",
+    "newExam": "Nueva Evaluación",
+    "types": {
+      "uniform": "Uniforme",
+      "differentiated": "Diferenciada"
+    },
+    "questionSelector": {
+      "available": "Preguntas Disponibles",
+      "selected": "Preguntas Seleccionadas"
+    },
+    "gradeScale": {
+      "title": "Escala de Notas",
+      "maxScore": "Puntaje Máximo",
+      "maxGrade": "Nota Máxima",
+      "demandPercentage": "% de Exigencia",
+      "passingScoreFor": "Puntaje para",
+      "minGrade": "Nota Mínima",
+      "passingGrade": "Nota de Aprobación",
+      "maxGradeLabel": "Nota Máxima"
+    },
+    "questionCard": {
+      "loading": "Cargando pregunta...",
+      "question": "Pregunta:",
+      "image": "Imagen:",
+      "alternatives": "Alternativas:",
+      "correctAnswer": "Respuesta correcta:",
+      "true": "Verdadero",
+      "false": "Falso",
+      "category": "Categoría:",
+      "difficulty": "Dificultad:",
+      "tags": "Etiquetas:"
+    }
+  }
+}

@@ -193,21 +193,59 @@ class CorrectionService {
       needsReview: false,
       reviewReasons: [],
       thumbnail: null,
+      alignedImage: null,
+      rutImage: null,
+      tableLeftImage: null,
+      tableRightImage: null,
       processingTime: 0,
       correctedAt: new Date()
     };
 
     try {
-      // 1. OpenCV: Alineación + ROIs
+      // 1. OpenCV: Procesamiento + ROIs (sin alineación)
       const visionResult = await visionService.processAnswerSheet(pageData);
 
-      if (!visionResult.success || visionResult.errors.length > 0) {
+      // Solo marcar para revisión si hay errores críticos (no encontrar marcadores QR ya no es crítico)
+      const criticalErrors = visionResult.errors.filter(error =>
+        !error.includes('marcadores QR necesarios')
+      );
+
+      if (!visionResult.success && criticalErrors.length > 0) {
         result.needsReview = true;
-        result.reviewReasons.push(...visionResult.errors);
+        result.reviewReasons.push(...criticalErrors);
       }
 
       // Thumbnail (imagen original comprimida)
       result.thumbnail = visionResult.original;
+
+      // Imágenes de debug - Pipeline del HTML
+      result.debugStep1Grayscale = visionResult.debug?.step1_grayscale;
+      result.debugStep4MarkersDetected = visionResult.debug?.step4_markersDetected;
+      result.debugStep5Warped = visionResult.debug?.step5_warped;
+      result.debugStep6GridDetected = visionResult.debug?.step6_gridDetected;
+      result.debugStep7RoiLeft = visionResult.debug?.step7_roiLeft;
+      result.debugStep8RoiRight = visionResult.debug?.step8_roiRight;
+
+      // Metadata del procesamiento
+      result.markersFound = visionResult.metadata?.markersFound || 0;
+      result.rowsDetected = visionResult.metadata?.rowsDetected || 0;
+
+      // DEBUG: Log para verificar qué imágenes se están guardando
+      console.log('📸 Imágenes de debug capturadas:', {
+        step1: !!result.debugStep1Grayscale,
+        step4: !!result.debugStep4MarkersDetected,
+        step5: !!result.debugStep5Warped,
+        step6: !!result.debugStep6GridDetected,
+        step7: !!result.debugStep7RoiLeft,
+        step8: !!result.debugStep8RoiRight,
+        markers: result.markersFound,
+        rows: result.rowsDetected
+      });
+
+      // Imágenes auxiliares para la vista previa (ROIs procesados)
+      result.rutImage = visionResult.rois?.rut;
+      result.tableLeftImage = visionResult.rois?.tableLeft;
+      result.tableRightImage = visionResult.rois?.tableRight;
 
       // 2. OCR: Extraer RUT
       if (visionResult.rois?.rut) {
@@ -231,27 +269,42 @@ class CorrectionService {
       // 3. YOLO: Detectar marcas en tablas
       const allDetections = [];
 
-      if (visionResult.rois?.tableLeftMat) {
+      // Detectar tabla izquierda
+      if (visionResult.rois?.tableLeft) {
         const leftResult = await yoloService.detect(visionResult.rois.tableLeft);
         if (leftResult.success) {
           allDetections.push(...leftResult.detections.map(d => ({ ...d, table: 'left' })));
+
+          // Dibujar detecciones para debug
+          const leftWithDetections = await this.drawDetectionsOnImage(
+            visionResult.rois.tableLeft,
+            leftResult.detections
+          );
+          result.debugYoloLeft = leftWithDetections;
         }
       }
 
-      if (visionResult.rois?.tableRightMat) {
+      // Detectar tabla derecha
+      if (visionResult.rois?.tableRight) {
         const rightResult = await yoloService.detect(visionResult.rois.tableRight);
         if (rightResult.success) {
           allDetections.push(...rightResult.detections.map(d => ({ ...d, table: 'right' })));
+
+          // Dibujar detecciones para debug
+          const rightWithDetections = await this.drawDetectionsOnImage(
+            visionResult.rois.tableRight,
+            rightResult.detections
+          );
+          result.debugYoloRight = rightWithDetections;
         }
       }
 
       result.detections = allDetections;
 
       // 4. Mapear detecciones a respuestas
-      const answers = this.mapDetectionsToAnswers(
-        allDetections,
-        visionResult.grids
-      );
+      // TEMPORAL: Por ahora no mapeamos porque no tenemos grids
+      // TODO: Implementar detección de grid en zona de tablas
+      const answers = [];
 
       result.answers = answers;
 
@@ -412,7 +465,7 @@ class CorrectionService {
         // Sin studentId, intentar usar gabarito uniforme
         answerKey = exam.finalizedVersions?.answerKey;
         if (!answerKey) {
-          throw new Error('No se puede calcular puntaje sin gabarito');
+          throw new Error('Este examen no tiene gabarito. Usa el botón "Regenerar Gabaritos" en la pestaña de corrección.');
         }
       }
     } catch (error) {
@@ -514,6 +567,19 @@ class CorrectionService {
       needsReview: r.needsReview,
       reviewReasons: r.reviewReasons,
       thumbnail: r.thumbnail,
+      // Imágenes de debug - Todos los pasos
+      debugStep1Grayscale: r.debugStep1Grayscale,
+      debugStep2Blurred: r.debugStep2Blurred,
+      debugStep3Binary: r.debugStep3Binary,
+      debugStep4MarkersDetected: r.debugStep4MarkersDetected,
+      debugStep5InnerROI: r.debugStep5InnerROI,
+      debugStep6TableBorder: r.debugStep6TableBorder,
+      debugStep7RutZone: r.debugStep7RutZone,
+      debugStep8TablesZone: r.debugStep8TablesZone,
+      // ROIs procesados
+      rutImage: r.rutImage,
+      tableLeftImage: r.tableLeftImage,
+      tableRightImage: r.tableRightImage,
       processingTime: r.processingTime,
       correctedAt: r.correctedAt
     }));
@@ -543,6 +609,85 @@ class CorrectionService {
    */
   getProgress() {
     return this.currentProgress;
+  }
+
+  /**
+   * Obtiene resultados de un examen específico
+   */
+  async getResultsByExam(examId) {
+    return await db.results.where('examId').equals(examId).toArray();
+  }
+
+  /**
+   * Obtiene un resultado específico
+   */
+  async getResultById(resultId) {
+    return await db.results.get(resultId);
+  }
+
+  /**
+   * Elimina resultados de un examen
+   */
+  async deleteResultsByExam(examId) {
+    await db.results.where('examId').equals(examId).delete();
+  }
+
+  /**
+   * Dibuja las detecciones de YOLO sobre una imagen
+   */
+  async drawDetectionsOnImage(imageBase64, detections) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+
+        // Dibujar imagen original
+        ctx.drawImage(img, 0, 0);
+
+        // Dibujar cada detección
+        detections.forEach(detection => {
+          const { bbox, class: className, confidence } = detection;
+
+          // bbox es un objeto con {x, y, width, height}
+          const { x, y, width, height } = bbox;
+
+          // Color según clase
+          const colors = {
+            'mark_X': '#FF0000',       // Rojo
+            'mark_circle': '#00FF00',  // Verde
+            'mark_line': '#0000FF',    // Azul
+            'mark_check': '#FF00FF'    // Magenta
+          };
+          const color = colors[className] || '#FFFF00';
+
+          // Dibujar rectángulo
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 3;
+          ctx.strokeRect(x, y, width, height);
+
+          // Dibujar etiqueta con fondo
+          const label = `${className} ${(confidence * 100).toFixed(0)}%`;
+          ctx.font = '14px Arial';
+          const textMetrics = ctx.measureText(label);
+
+          // Fondo para el texto
+          ctx.fillStyle = color;
+          ctx.fillRect(x, y - 20, textMetrics.width + 8, 18);
+
+          // Texto
+          ctx.fillStyle = '#000000';
+          ctx.fillText(label, x + 4, y - 6);
+        });
+
+        // Convertir a base64
+        resolve(canvas.toDataURL('image/jpeg', 0.95));
+      };
+      img.onerror = reject;
+      img.src = imageBase64;
+    });
   }
 }
 

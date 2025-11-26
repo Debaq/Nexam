@@ -88,7 +88,7 @@ training/**/.venv
 # Modelos ONNX (pueden ser pesados, versionar solo el final)
 public/models/*
 !public/models/.gitkeep
-!public/models/yolov11n-marks.onnx
+!public/models/nexam_v1.onnx
 
 # Datos temporales y caché
 .temp/

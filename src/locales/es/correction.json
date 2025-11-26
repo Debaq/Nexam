@@ -1,0 +1,29 @@
+{
+  "correction": {
+    "title": "Corrección Automática",
+    "upload": "Subir Imagen",
+    "uploadScannedSheets": "Subir hojas escaneadas",
+    "dropZoneText": "Arrastra tus archivos aquí o haz clic para seleccionar",
+    "dropZoneMinimized": "Subir más",
+    "process": "Procesar",
+    "results": "Resultados",
+    "stages": {
+      "uploadProcessing": {
+        "title": "Subida y Procesamiento",
+        "subtitle": "Selecciona tus archivos PDF o imágenes para comenzar"
+      },
+      "answerSheets": {
+        "title": "Hojas de Respuestas",
+        "subtitle": "Selecciona una hoja para verla en detalle",
+        "preview": "Vista previa de la hoja de respuestas"
+      },
+      "results": {
+        "title": "Resultados",
+        "subtitle": "RUTs y puntajes obtenidos",
+        "studentRut": "RUT",
+        "score": "Puntaje Obtenido",
+        "list": "Lista de resultados"
+      }
+    }
+  }
+}

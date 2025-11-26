@@ -9,7 +9,7 @@ export const FeedbackButton = () => {
   const handleFeedbackSubmit = async (feedbackData) => {
     try {
       // Enviar feedback a la API
-      const response = await fetch('https://tmeduca.org/issuse_api/nexam_issuse.php', {
+      const response = await fetch('https://www.tmeduca.org/issuse_api/nexam_issuse.php', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
